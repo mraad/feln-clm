@@ -1,0 +1,1 @@
+- `ssh host 'pkill -f PATTERN; …'` kills its own remote shell (the pattern is in its command line) → exit 255. Use `pkill -f '[p]attern'` or kill by PID.

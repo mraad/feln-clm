@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FELN CLM</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6778; --line: #dfe3ea;
+  --accent: #2458d6; --accent-ink: #ffffff; --ok: #1f7a4d; --warn: #a3510c; --code: #f0f2f6;
+  --bar: #cfd9f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11151c; --panel: #181e27; --ink: #e6eaf1; --muted: #9aa5b6; --line: #2a3340;
+          --accent: #6f9bff; --accent-ink: #0b1020; --ok: #5ccf97; --warn: #f0a35e; --code: #0f1319; --bar: #2c3f6b; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+.sub { color: var(--muted); font-size: 13px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+textarea { width: 100%; min-height: 84px; resize: vertical; padding: 10px 12px; border-radius: 8px;
+           border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+         color: var(--ink); padding: 6px 12px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: .6; cursor: progress; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.status { font-weight: 600; }
+.status.accepted { color: var(--ok); } .status.abstain { color: var(--warn); }
+.meter { height: 8px; background: var(--code); border-radius: 4px; overflow: hidden; flex: 1; min-width: 120px; }
+.meter > span { display: block; height: 100%; background: var(--accent); }
+.layer { border-top: 1px solid var(--line); padding: 10px 0; }
+.layer:first-of-type { border-top: 0; padding-top: 0; }
+.layer b { font-size: 15px; }
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-left: 6px; }
+code, pre { font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+code.sql { display: block; background: var(--code); padding: 6px 8px; border-radius: 6px; margin-top: 4px;
+           white-space: pre-wrap; word-break: break-word; }
+pre { background: var(--code); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+td.p { width: 90px; } td.p .meter { min-width: 0; }
+.muted { color: var(--muted); }
+.error { color: var(--warn); margin-top: 10px; }
+details summary { cursor: pointer; color: var(--muted); margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Text → FELN</h1>
+    <span class="sub">Qwen3-8B encoder + fine-tuned CLM heads, answered as typed choices over the OKF catalog</span>
+    <span class="sub" id="sha"></span>
+  </header>
+
+  <section class="panel">
+    <label for="text" class="sub">Request</label>
+    <textarea id="text" placeholder="e.g. Show oil discoveries within 5 kilometers of injection pipelines"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Translate</button>
+      <span class="sub">⌘/Ctrl + Enter</span>
+    </div>
+    <div class="row" id="examples"></div>
+    <div class="error" id="error" role="alert"></div>
+  </section>
+
+  <div id="out" hidden>
+    <section class="panel" style="margin-top:16px">
+      <div class="row" style="margin-top:0">
+        <span class="status" id="status"></span>
+        <span class="meter" title="joint probability of the chosen decisions"><span id="conf-bar"></span></span>
+        <span id="conf" class="sub"></span>
+        <span id="secs" class="sub"></span>
+      </div>
+    </section>
+    <div class="grid">
+      <section class="panel">
+        <h2>Query</h2>
+        <div id="layers"></div>
+        <details><summary>FELN JSON</summary>
+          <div class="row"><button id="copy">Copy</button></div>
+          <pre id="json"></pre>
+        </details>
+      </section>
+      <section class="panel">
+        <h2>Decisions</h2>
+        <table><tbody id="decisions"></tbody></table>
+        <details id="alts-box"><summary>Alternatives</summary><div id="alts"></div></details>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const pct = (p) => `${(100 * p).toFixed(1)}%`;
+
+function renderLayers(meta) {
+  const box = $("layers"); box.replaceChildren();
+  meta.layers.forEach((name, i) => {
+    const head = el("div", {}, el("b", { textContent: name }),
+      el("span", { className: "badge", textContent: i === 0 ? "returned" : `related · ${meta.relations[i - 1]}` }));
+    const where = el("code", { className: "sql", textContent: meta.where[i] || "(no filter)" });
+    box.append(el("div", { className: "layer" }, head, where));
+  });
+}
+
+function render(res) {
+  $("out").hidden = false;
+  const s = $("status"); s.textContent = res.status; s.className = `status ${res.status}`;
+  $("conf").textContent = `confidence ${pct(res.confidence)}`;
+  $("conf-bar").style.width = pct(res.confidence);
+  $("secs").textContent = `${res.seconds.toFixed(2)} s`;
+  renderLayers(res.meta);
+  $("json").textContent = JSON.stringify(res.meta, null, 2);
+  const rows = Object.entries(res.decisions).map(([q, d]) =>
+    el("tr", {}, el("td", { className: "muted", textContent: q }), el("td", { textContent: d.choice }),
+       el("td", { className: "p", title: pct(d.probability) },
+          el("span", { className: "meter" }, el("span", { style: `width:${pct(d.probability)}` })))));
+  $("decisions").replaceChildren(...rows);
+  $("alts").replaceChildren(...res.alternatives.map((a) =>
+    el("div", { className: "layer" }, el("span", { className: "sub", textContent: pct(a.confidence) }),
+       el("pre", { textContent: JSON.stringify(a.meta) }))));
+  $("alts-box").hidden = !res.alternatives.length;
+}
+
+async function ask() {
+  const text = $("text").value.trim();
+  if (!text) return;
+  $("go").disabled = true; $("error").textContent = "";
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ text }) });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    render(body);
+  } catch (e) { $("error").textContent = e.message; }
+  finally { $("go").disabled = false; }
+}
+
+$("go").onclick = ask;
+$("text").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); });
+$("copy").onclick = () => navigator.clipboard.writeText($("json").textContent);
+fetch("/api/info").then((r) => r.json()).then((info) => {
+  $("sha").textContent = `catalog ${info.catalog_sha}`;
+  $("examples").replaceChildren(...info.examples.map((t) =>
+    el("button", { className: "chip", textContent: t, onclick: () => { $("text").value = t; ask(); } })));
+});
+</script>
+</body>
+</html>
