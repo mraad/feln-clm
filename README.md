@@ -136,7 +136,7 @@ uv run python -m feln_clm.prepare data/okf data/FELN.json data/laya-heldout.json
     --extra data/laya-generated.jsonl --db out/project.duckdb
 rsync -a out/rows gc5:feln-clm/
 
-# gc5, once: uv venv .venv && uv pip install --python .venv/bin/python torch transformers safetensors
+# gc5, once: uv venv .venv && uv pip install --python .venv/bin/python torch "transformers>=5" safetensors
 #            uv pip install --python .venv/bin/python -e ../feln && uv pip install --python .venv/bin/python --no-deps -e .
 python -m feln_clm.train rows models/q4b-f0 --base Qwen/Qwen3-4B --holdout fold0      # CV run
 python -m feln_clm.cli evaluate okf models/q4b-f0 rows --split fold0 --backend torch --output results/q4b-f0.jsonl

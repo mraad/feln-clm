@@ -12,7 +12,7 @@ dependencies = ["feln", "numpy"]
 [project.optional-dependencies]
 mlx = ["mlx-lm>=0.28"]
 exec = ["duckdb>=1.1"]
-train = ["torch", "transformers", "safetensors"]  # CUDA host only
+train = ["torch", "transformers>=5", "safetensors"]  # v5: DynamicCache.reorder_cache  # CUDA host only
 dev = ["pytest", "ruff"]
 
 [project.scripts]

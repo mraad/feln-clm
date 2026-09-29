@@ -1,6 +1,6 @@
 """LoRA fine-tuning of the generator on prepared rows (CUDA host).
 
-    python -m feln_clm.train out/rows models/qwen3-8b --base Qwen/Qwen3-8B [--holdout fold0]
+    python -m feln_clm.train out/rows models/q4b --base Qwen/Qwen3-4B [--holdout fold0]
 
 Trains on every row except ``dev``, the ``--holdout`` split and (unless ``--keep-noisy``)
 rows whose gold contradicts the text. Loss is on the target tokens only; the prompt is
@@ -45,7 +45,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)  # fmt: skip
     ap.add_argument("rows", help="prepare output dir")
     ap.add_argument("out")
-    ap.add_argument("--base", default="Qwen/Qwen3-8B")
+    ap.add_argument("--base", default="Qwen/Qwen3-4B")
     ap.add_argument("--holdout", default="", help="split left out for evaluation, e.g. fold0")
     ap.add_argument("--keep-noisy", action="store_true")
     ap.add_argument("--epochs", type=int, default=3)

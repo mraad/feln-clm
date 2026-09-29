@@ -132,7 +132,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "safetensors", marker = "extra == 'train'" },
     { name = "torch", marker = "extra == 'train'" },
-    { name = "transformers", marker = "extra == 'train'" },
+    { name = "transformers", marker = "extra == 'train'", specifier = ">=5" },
 ]
 provides-extras = ["mlx", "exec", "train", "dev"]
 
