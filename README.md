@@ -14,8 +14,9 @@ typed questions) is in git history at `441c423`; its numbers stay in the table b
 ```
 request ──► spans: quoted strings, numbers, distances (number + unit)
         ──► hints: where each quoted literal occurs in the project data
-            ("'GASSCO AS' = Pipelines current operator", from values.json)
-        ──► prompt:  Request: … / Values: … / FELN:
+            ("'GASSCO AS' = Pipelines current operator", from values.json),
+            and which column a synonym names ("'depth' = Wells well water depth", OKF "Also called")
+        ──► prompt:  Request: … / Values: … / Columns: … / FELN:
         ──► constrained beam search (8 beams) over pieces:
                Pipelines [unknown] where current operator is 'GASSCO AS'; within 5 miles of Wells [any].
                └ head: layer [subtype]  └ condition (column, op, literal)   └ head: relation, distance, layer [subtype]
@@ -95,6 +96,22 @@ itself instead of heads over frozen embeddings.
 - The adapter is tied to the OKF hash and to `values.json`; a changed catalog or data needs
   `prepare` + retraining (~8 min on one RTX PRO 6000).
 
+## Column synonyms
+
+When requests call a column something other than its OKF alias, list the other names in
+the column's Query hints, comma-separated:
+
+```
+## `water_depth`
+
+- Depth of the well in meters
+- Also called: water depth, depth
+```
+
+The prompt then names the column when a request uses one of them, and `prepare` adds
+training copies of the requests on that column with the name swapped for each other one
+(same gold). Editing the OKF changes its hash: re-run `prepare` and retrain.
+
 ## Setup (Mac)
 
 Keep `../feln` beside this checkout (editable path dependency). Project data and weights
@@ -126,6 +143,11 @@ one JSONL line per request plus `.summary.json` (exact, atom P/R, per-tag exact,
 accuracy) and refuses to overwrite. `execute` builds `out/project.duckdb` once from the OKF
 `resource` feature classes. The app is one static page on the stdlib HTTP server
 (loopback, one request at a time): `GET /api/info`, `POST /api/ask {"text": …}`.
+
+Ctrl-C, SIGTERM and SIGHUP stop every command cleanly: `serve` stops accepting
+connections, finishes the requests in flight, then exits; `evaluate` keeps its JSONL and
+writes a summary of the requests it finished (`"interrupted": "n/N"`). Exit code is
+128 + the signal number (130 Ctrl-C, 143 SIGTERM).
 
 ## Train and evaluate (gpu-host)
 

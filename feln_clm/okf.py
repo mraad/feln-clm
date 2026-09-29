@@ -34,10 +34,10 @@ class Column:
         return m.group(1) if m else CASTS.get(self.type, "")
 
     @property
-    def about(self) -> str:
-        """Free-text hint describing the column (not a SQL rule), if any."""
-        rules = ("Make sure", "ALWAYS", "NEVER", "Use '", "For example")
-        return next((h for h in self.hints if not h.startswith(rules)), "")
+    def synonyms(self) -> list[str]:
+        """Other names requests use for the column: a hint 'Also called: a, b'."""
+        return [w.strip() for h in self.hints if h.startswith("Also called:")
+                for w in h.removeprefix("Also called:").split(",") if w.strip()]  # fmt: skip
 
 
 @dataclass
