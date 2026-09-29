@@ -14,7 +14,7 @@ uv run ruff check . && uv run ruff format --check .
 ## Training/inference contract (do not drift)
 
 - **Piece text is the model.** The adapter is trained on the exact strings of
-  `grammar.prompt`, `grammar.hints`, `grammar.head`, `grammar.condition` (option phrases in
+  `grammar.prompt`, `grammar.hints`, `grammar.column_hints`, `grammar.head`, `grammar.condition` (option phrases in
   `_options`, `RELATIONS`) and `END`. Any wording change silently degrades a trained model:
   re-run `prepare` and retrain. `feln-clm.json` records the catalog hash, not the wording.
 - **Pieces are tokenized one at a time**, in training (`train.py`) and in the decoder's
@@ -31,6 +31,8 @@ uv run ruff check . && uv run ruff format --check .
 - The prompt hints come from `values.json` (lower-cased distinct values of every text
   column, built from the GDB by `prepare`). It travels with the model dir; rebuild both
   if the data changes.
+- Column synonyms come from OKF hints `Also called: a, b` (`Column.synonyms`). `prepare`
+  writes swapped-name copies as split `<split>+`; `train` drops `<holdout>+` with its fold.
 - A model refuses an OKF whose `Catalog.sha` differs; do not bypass by editing the config.
 
 ## Evaluation hygiene
@@ -40,7 +42,8 @@ uv run ruff check . && uv run ruff format --check .
   on `fold0`..`fold4` (cross-validation over the other FELN.json requests), not on dev.
 - `tags`: `implicit` (a gold layer never named) and `noisy` (gold contradicts the text).
   Report exact per tag; `noisy` rows are excluded from training by default.
-- `evaluate` never overwrites; use a new output path per run.
+- `evaluate` never overwrites; use a new output path per run. An interrupted run leaves a
+  summary with `"interrupted": "n/N"`: not a result to report.
 - Execution metrics reproject the GDB (EPSG:4326 assumed) to EPSG:3035 metres; 123 of 200
   dev gold queries return no features, so read the non-empty-gold rows.
 

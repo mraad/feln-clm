@@ -60,7 +60,7 @@ def main() -> None:
     rows_dir, out = Path(a.rows), Path(a.out)
     out.mkdir(parents=True, exist_ok=False)
     rows = [json.loads(line) for line in open(rows_dir / "rows.jsonl")]
-    rows = [r for r in rows if r["split"] not in ("dev", a.holdout)
+    rows = [r for r in rows if r["split"].rstrip("+") not in ("dev", a.holdout)
             and (a.keep_noisy or "noisy" not in r["tags"])]  # fmt: skip
 
     tok = AutoTokenizer.from_pretrained(a.base)

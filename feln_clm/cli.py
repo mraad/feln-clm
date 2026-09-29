@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
+import sys
 from pathlib import Path
 
 
@@ -13,7 +15,24 @@ def translator(a):
     return Translator(a.okf, a.model, backend=a.backend, beam=a.beam, threshold=a.threshold)  # fmt: skip
 
 
+def _interrupt(signum, frame):
+    raise KeyboardInterrupt(signum)
+
+
 def main() -> None:
+    """Ctrl-C, SIGTERM and SIGHUP all unwind as KeyboardInterrupt, so ``serve`` finishes the
+    requests in flight and ``evaluate`` writes a partial summary; exit code 128 + signal."""
+    signal.signal(signal.SIGTERM, _interrupt)
+    signal.signal(signal.SIGHUP, _interrupt)
+    try:
+        _main()
+    except KeyboardInterrupt as e:
+        signum = e.args[0] if e.args else signal.SIGINT
+        print(f"[feln-clm] stopped by {signal.Signals(signum).name}", file=sys.stderr, flush=True)
+        sys.exit(128 + signum)
+
+
+def _main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("ask", "evaluate", "serve"):

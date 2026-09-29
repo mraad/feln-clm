@@ -68,5 +68,10 @@ def serve(translator, port: int) -> None:
             print(f"[serve] {self.address_string()} {format % args}", flush=True)
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.daemon_threads = False  # server_close() then waits for requests in flight
     print(f"[serve] http://127.0.0.1:{port}/", flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:  # Ctrl-C / SIGTERM / SIGHUP (see cli.main): stop accepting, finish, close
+        print("[serve] shutting down: finishing requests in flight", flush=True)
+        server.server_close()
