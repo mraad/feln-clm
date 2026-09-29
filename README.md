@@ -1,114 +1,104 @@
 # feln-clm
 
-Text → FELN with a fine-tuned **Contrastive Language Model** (CLM) over an OKF project
-catalog. A request becomes a few typed multiple-choice questions; CLM (frozen Qwen3-8B
-encoder + fine-tuned projection heads) answers them; a joint decoder assembles the best
-consistent FELN query. Training and tuning run on a CUDA host (gc5, vLLM); inference runs
-on the Mac (native MLX). The goal is accuracy, precision and recall, not latency.
+Text → FELN over an OKF project catalog with a LoRA-tuned Qwen3 whose decoding is
+constrained to the catalog. The model writes a query as a few short pieces, each one
+choice from a closed set (layer, subtype, condition, relation + distance); SQL is rendered
+from the OKF hints, never generated. Training and cross-validation run on a CUDA host
+(gc5); inference runs on the Mac (MLX). The goal is accuracy, precision and recall.
+
+v1 of this repo (CLM: frozen Qwen3-8B embeddings + choice heads answering four rounds of
+typed questions) is in git history at `441c423`; its numbers stay in the table below.
 
 ## How it works
 
 ```
-request ──► spans (quoted strings, numbers, distances) + subtype mentions ("oil", "gas shows")
-        ──► CLM questions, 4 rounds:
-              layers        primary layer + related layers           (12 options)
-              subtype       among the subtypes the request names + "any"
-              column / op   extra attribute condition, split in two  (≤27, ≤12 options)
-              relation      named with the bound subtype ("…relative to the oil pipelines?")
-              distance/value which span of the request fills it (only when ambiguous)
-        ──► joint decode: sum of log-probs over 3 layer structures, with constraints
-              · a subtype name is bound to at most as many layers as the request says it
-              · a condition needs a literal the request offers; literals are not shared
-              · two distance relations take different distances
-              · every quoted literal / bare number left unexplained costs 2 nats
-        ──► FELN {layers, where, relations}; SQL rendered from the OKF hints (LIKE, UPPER, casts, codes)
+request ──► spans: quoted strings, numbers, distances (number + unit)
+        ──► hints: where each quoted literal occurs in the project data
+            ("'GASSCO AS' = Pipelines current operator", from values.json)
+        ──► prompt:  Request: … / Values: … / FELN:
+        ──► constrained beam search (8 beams) over pieces:
+               Pipelines [unknown] where current operator is 'GASSCO AS'; within 5 miles of Wells [any].
+               └ head: layer [subtype]  └ condition (column, op, literal)   └ head: relation, distance, layer [subtype]
+            each step allows only tokens that continue a legal piece (token trie per slot):
+              · layers and subtypes from the OKF, ≤ 3 distinct layers
+              · conditions from the column's kind (LIKE / UPPER / codes / yes-no / numbers / years)
+              · literals and distances are spans of the request; a literal serves one condition
+              · several distances in the request → each relation takes a different one
+        ──► FELN {layers, where, relations}; SQL rendered by grammar.compose (casts, LIKE, codes)
 ```
 
-Every question is framed as a Qwen3 chat turn that **lists the options** and ends in
-`Answer:`, so the pooled last token is the one that predicts the answer. The CLM action
-head embeds each option's text. Five heads trained with different seeds share the same
-state embeddings; their distributions are averaged (geometric mean).
+Every output is a valid FELN over the catalog. `confidence` is the probability of the
+winning sequence (renormalised over legal tokens); the other finished beams are returned
+as `alternatives`. Pieces are tokenized one at a time in training and decoding, so gold is
+always reachable (the oracle test decodes all 3,000 FELN.json queries back to gold).
 
-Reused unchanged: `../CLM` (`clm.schema`, heads, `Engine`, `train/finetune.py --task choice`,
-warm-started from CLM-v0.1-8B) and `../feln` (`FELN.same`, `FELNCompare`, `FELNToDuckDB`).
-New here: OKF reader, grammar (decompose/compose), MLX + vLLM encoders behind CLM's
-`Embedder`, decoder, evaluation, execution metrics, stdlib server + one-page app.
+## Results
 
-## Results — 200 dev requests (feln-laya's held-out split)
+### 200 dev requests (feln-laya's held-out split; never trained on, no recipe choice made on it)
 
-| | feln-laya (BGE-small cross-encoder) | **feln-clm** (5-head ensemble) |
+| | **feln-clm v2** (Qwen3-4B + LoRA) | v1 (CLM, 5 heads) | feln-laya | feln-lora v2 |
+|---|---:|---:|---:|---:|
+| Exact FELN (`FELN.same`) | **91.5%** | 81.5% | 74.0% | 60.0%¹ |
+| — a gold layer never named in the text (110) | **87.3%** | 73.6% | — | — |
+| Atom precision / recall (layers, predicates, relations) | **0.962 / 0.961** | 0.939 / 0.924 | — | — |
+| Accuracy / coverage at confidence ≥ 0.8 | **95.9% / 85.5%** | 92.1% / 63.0% | 91.6% / 53.5% | — |
+| Accuracy / coverage at confidence ≥ 0.9 | **97.0% / 82.5%** | 94.8% / 48.0% | — | — |
+| Executed on NorthSea.gdb: same feature set | **95.5%** | 94.0% | 92.0% | 84.0% |
+| — same set, requests with non-empty gold (77) | **89.6%** | 85.7% | 81.8% | 66.2% |
+| — mean Jaccard | **0.966** | 0.955 | 0.942 | 0.859 |
+| — macro precision / recall of feature IDs | **0.963 / 0.937** | 0.898 / 0.922 | 0.924 / 0.908 | 0.831 / 0.734 |
+| — micro precision / recall of feature IDs | 0.654 / 0.696 | 0.462 / 0.738 | **0.687 / 0.806** | 0.646 / 0.715 |
+| Invalid outputs | 0 | 0 | — | 20 |
+| Median latency | 0.59 s (gc5) · 1.64 s (Mac MLX; p90 2.5 s) | 4.0 s (Mac) | 0.16 s | 2.4 s |
+
+¹ after ILIKE→LIKE and INT→INTEGER normalisation (49.5% raw). feln-lora (Nemotron-4B LoRA,
+free-form JSON under a shape-only grammar) was trained on templated questions and its own
+catalog, so this is its transfer to these reworded requests, not its in-domain score.
+
+Mac MLX and gc5 torch predictions are identical on 200/200 dev requests. Micro feature precision/recall is dominated by a few requests with very large
+result sets (a wrong subtype on a wells query returns ~1,900 wells); per request (macro)
+v2 leads on both. Execution metrics run gold and predicted FELN with DuckDB spatial on the
+GDB (EPSG:3035 metres); 123 of 200 gold queries return no features.
+
+### 5-fold cross-validation (the other 2,800 FELN.json requests; laya-generated rows always train)
+
+| | Qwen3-4B | Qwen3-8B |
 |---|---:|---:|
-| Exact FELN (`FELN.same`) | 74.0% | **81.5%** (gc5 and Mac MLX) |
-| 1 / 2 / 3-layer exact | 32/37 · 87/113 · 29/50 | **35/37 · 94/113 · 34/50** |
-| Atom precision / recall (layers, predicates, relations) | — | 0.939 / 0.924 |
-| Accuracy / coverage at confidence ≥ 0.8 | 91.6% / 53.5% | 92.1% / **63.0%** |
-| Accuracy / coverage at confidence ≥ 0.9 | — | 94.8% / 48.0% |
-| Executed on NorthSea.gdb: same feature set | 92.0% | **94.0%** |
-| — same set, requests with non-empty gold (77) | 81.8% | **85.7%** |
-| — mean Jaccard | 0.942 | **0.955** |
-| — macro precision / recall of feature IDs | **0.924** / 0.908 | 0.898 / **0.922** |
-| Median latency | 0.16 s (MLX) | 0.18 s (gc5) · 4.0 s (Mac MLX, 30-request re-time) |
+| Exact | **88.8%** | 88.8% |
+| — every layer named, gold consistent (1,195) | 97.8% | 97.4% |
+| — a gold layer never named (1,567) | 83.7% | 84.0% |
+| — gold contradicts text (87, `noisy`) | 29.9% | 21.8% |
+| Atom precision / recall | 0.951 / 0.950 | 0.952 / 0.950 |
+| Accuracy / coverage at confidence ≥ 0.8 | 94.4% / 83.6% | 94.5% / 83.7% |
 
-Table numbers are the Mac MLX run unless marked gc5; MLX and gc5 predictions are identical
-on 196/200 requests (near-ties flip), with the same exact score. Per request (gc5): 25
-requests only feln-clm gets right, 10 only feln-laya. Execution metrics
-run gold and predicted FELN with DuckDB spatial on the GDB (EPSG:3035 metres); 123 of 200
-gold queries return no features, so the non-empty row is the informative one. feln-clm's
-lower ID precision comes from a few large sets: e.g. "Show wells within 5 miles of gas
-pipelines" (gold filters *shows* wells; the text never says so) returns all 1,881 wells
-near gas pipelines. Most such requests carry low confidence (0.12 there).
+The sizes tie (54 requests only 4B gets right, 53 only 8B), so the smaller, faster 4B is
+the model. An unused-literal penalty (0, 2, 4 nats) changed no answer on fold 0 and was
+removed. Nearly all remaining errors are requests that name a related layer only by a
+subtype word several layers share, or whose gold contradicts the text.
 
-Recipe progression (per-question test accuracy, then end-to-end exact):
-
-| change | question acc | exact |
-|---|---:|---:|
-| raw text state, CLM defaults | 0.804 | — |
-| lr 2e-3, 60 epochs, InfoNCE | 0.862 | — |
-| chat turn listing the options | 0.886 | — |
-| end the turn on `Answer:` (CLM strips trailing whitespace) | 0.943 | 73.0% |
-| subtypes restricted to named ones, joint binding, relation names the subtype | 0.941 | 78.0% |
-| + literal penalty (tuned on finetune's validation split, 70.5→72.3%) + 5 seeds | 0.95 each | 81.5% |
-
-Latency experiment — cacheable framings (`prefix`, `qprefix`): put the request-independent
-part of each prompt (option list; for `qprefix` also the question) before the request, so
-the MLX encoder computes its KV state once and reuses it (`MLXEmbedder` does this for any
-text containing `PREFIX_END`; cached vs full encode cosine ≥ 0.99957; 2.3× faster on the
-same prompts). Single heads, seed 1234, decoded with penalty 2:
-
-| framing | per-question val | val exact (285) | dev exact (200) |
-|---|---:|---:|---:|
-| `options` (default) | 0.963 | 73.0% | 82.5% |
-| `prefix` (options first) | 0.946 | 70.9% | 74.0% |
-| `qprefix` (question + options first) | 0.953 | 73.0% | 74.5% |
-
-Neither is worth it. `prefix` loses accuracy (options listed before the question cannot
-attend to it); `qprefix` ties on val exact but is lower per question and 8 points lower on
-dev. End to end on the Mac it is also slower, not faster: median 10.7 s vs 4.0 s over 30
-dev requests, because each distinct cached head (role- and subtype-specific questions,
-per-request value/distance lists) forms its own small batch, and most heads are cold. The
-default model stays `options`.
-
-The dev split was used to compare recipes, so it is a development set, not a pristine
-test. Decoder knobs were tuned only on the finetune validation split (285 requests).
+Why v2 beats v1 (v1's 37 dev misses: 11 undecidable from text, 8 gold contradicting text,
+18 fixable): the generator decides layer, relation, distance and subtype jointly, so it
+binds "more than 1000 meters from gas/condensate pipelines" to the right layer; the value
+hints resolve which column a quoted literal belongs to; and the adapter tunes the LM
+itself instead of heads over frozen embeddings.
 
 ## Limits
 
-- Grammar = FELN.json's: subtype + at most one extra condition per layer (`=, <>, LIKE
-  contains/starts/ends, either-of-two, blank, <, >, <=, >=, BETWEEN`, year ranges). 748 of
-  2,857 generated training rows with two conditions were skipped.
-- A subtype the request never names cannot be predicted (5.5% of FELN.json golds; mostly
-  humanizer noise such as "oil/gas wells" for gold *oil/gas shows*).
-- Ambiguous requests ("within 15 km of oil" — wells, pipelines or discoveries?) stay
-  ambiguous; `confidence` (joint probability of the decisions) flags many of them.
-- MLX latency is ~4–9 s per request on an M4 Max: three sequential rounds of Qwen3-8B
-  prefill (~500 tokens/s) over prompts that list every option. The server embeds all fixed
-  option texts at startup (~9 s) and the encoder batches prompts length-sorted. The models are bf16; no quantization was evaluated.
-- Checkpoints are tied to the OKF catalog hash; a changed OKF needs `prepare` + retraining.
+- Grammar = FELN.json's: subtype + at most one extra condition per layer, at most 3
+  layers. 715 of 2,857 laya-generated training rows (two conditions) are skipped.
+- A related layer named only by a subtype word that several layers share ("within 15 km
+  of **oil**": wells, pipelines and discoveries all have *oil*) is a guess; the data
+  generator picked one at random. `confidence` is low on most of them, and the
+  alternatives list the other readings.
+- Some gold contradicts its text (the humanizer changed "discoveries" to "wells", dropped a
+  subtype). Rows tagged `noisy` are left out of training and reported separately.
+- The adapter is tied to the OKF hash and to `values.json`; a changed catalog or data needs
+  `prepare` + retraining (~8 min on one RTX PRO 6000).
 
-## Setup
+## Setup (Mac)
 
-Keep `../CLM` and `../feln` beside this checkout (editable path dependencies; CLM's vLLM
-pin is dropped on macOS). Project data and weights are not in git:
+Keep `../feln` beside this checkout (editable path dependency). Project data and weights
+are not in git:
 
 ```sh
 N="$HOME/Documents/ArcGIS/Projects/NorthSea"
@@ -118,77 +108,64 @@ cp ../feln-laya/out/expanded-v2/generated.jsonl data/laya-generated.jsonl   # ex
 uv sync --extra mlx --extra exec --extra dev
 ```
 
-`models/options4` (`feln-clm.json` + `heads/*.pt`, 400 MB) comes from training below, copied
-from the training host. Qwen3-8B (bf16, ~16 GB) downloads from Hugging Face on first use.
-A model refuses an OKF whose hash differs from the one it was trained on.
+A model dir (`feln-clm.json`, `adapter.safetensors`, `values.json`; 128 MB for `models/q4b`) comes from
+training below. The base model downloads from Hugging Face on first use.
 
 ## Use (Mac)
 
 ```sh
-uv run feln-clm ask data/okf models/options4 "Find gas/condensate wells within 5 km of injection pipelines."
-uv run feln-clm serve data/okf models/options4          # single-page app: http://127.0.0.1:8710/
-uv run feln-clm evaluate data/okf models/options4 data/FELN.json data/laya-heldout.jsonl --output results/x.jsonl
-uv run feln-clm execute data/okf results/x.jsonl        # execution precision/recall on the GDB
+uv run feln-clm ask data/okf models/q4b "Find gas/condensate wells within 5 km of injection pipelines."
+uv run feln-clm serve data/okf models/q4b          # single-page app: http://127.0.0.1:8710/
+uv run feln-clm evaluate data/okf models/q4b out/rows --split dev --output results/x.jsonl
+uv run feln-clm execute data/okf results/x.jsonl     # execution precision/recall on the GDB
 ```
 
 `ask` prints the FELN (`meta`), `status` (`accepted` when `confidence` ≥ `--threshold`,
-default 0.5), per-question decisions with probabilities, and the runner-up structures.
-`evaluate` writes one JSONL line per request plus `.summary.json`, and refuses to overwrite.
-`execute` builds `out/project.duckdb` once from the OKF `resource` feature classes.
+default 0.5), the pieces with their probabilities, and the alternatives. `evaluate` writes
+one JSONL line per request plus `.summary.json` (exact, atom P/R, per-tag exact, selective
+accuracy) and refuses to overwrite. `execute` builds `out/project.duckdb` once from the OKF
+`resource` feature classes. The app is one static page on the stdlib HTTP server
+(loopback, one request at a time): `GET /api/info`, `POST /api/ask {"text": …}`.
 
-The app is one static page served by the stdlib HTTP server (loopback only, one request at
-a time): `GET /api/info` (catalog, examples), `POST /api/ask {"text": …}` → the `ask` result.
-It shows the query per layer, confidence, every decision with its probability, the FELN
-JSON and the alternatives.
+## Train and evaluate (gc5)
 
-## Train (gc5)
-
-Environment on the CUDA host (once):
+Prepare rows on the Mac (needs the GDB for `values.json`), copy them over, then train:
 
 ```sh
-uv venv .venv && uv pip install --python .venv/bin/python vllm pyarrow huggingface_hub transformers
-uv pip install --python .venv/bin/python -e ../CLM -e ../feln && uv pip install --python .venv/bin/python --no-deps -e .
-.venv/bin/hf download Qwen/Qwen3-8B
-.venv/bin/hf download Contrastive-LM/CLM-v0.1-8B CLM_v0.1-8B.pt --local-dir ~/.cache/clm
+uv run python -m feln_clm.prepare data/okf data/FELN.json data/laya-heldout.jsonl out/rows \
+    --extra data/laya-generated.jsonl --db out/project.duckdb
+rsync -a out/rows gc5:feln-clm/
+
+# gc5, once: uv venv .venv && uv pip install --python .venv/bin/python torch transformers safetensors
+#            uv pip install --python .venv/bin/python -e ../feln && uv pip install --python .venv/bin/python --no-deps -e .
+python -m feln_clm.train rows models/q4b-f0 --base Qwen/Qwen3-4B --holdout fold0      # CV run
+python -m feln_clm.cli evaluate okf models/q4b-f0 rows --split fold0 --backend torch --output results/q4b-f0.jsonl
+python -m feln_clm.train rows models/q4b --base Qwen/Qwen3-4B                             # final: all but dev
 ```
 
-Prepare rows on the Mac (or there), then fine-tune five seeds and package:
-
-```sh
-uv run python -m feln_clm.prepare data/okf data/FELN.json data/laya-heldout.jsonl out/rows-options4 \
-    --extra data/laya-generated.jsonl --format options
-export PY=.venv/bin/python CLM=../CLM
-scripts/finetune-gc5.sh s1 out/rows-options4 0 emb --seed 1   # first run embeds (~3 min)
-for s in 2 3 4 5; do scripts/finetune-gc5.sh s$s out/rows-options4 $((s % 2)) emb --seed $s; done
-$PY -m feln_clm.cli package out/rows-options4 models/options4 runs/s1 runs/s2 runs/s3 runs/s4 runs/s5
-$PY -m feln_clm.cli evaluate data/okf models/options4 data/FELN.json data/laya-heldout.jsonl \
-    --encoder vllm --device cuda --output results/gc5.jsonl
-$PY scripts/sweep.py models/options4 out/rows-options4 tag '{"penalty": 0}' '{"penalty": 2}'  # val split only
-```
-
-Then copy `models/options4` to the Mac. Each head takes ~5 min on one RTX PRO 6000.
-MLX and vLLM embeddings agree to cosine ≥ 0.99993, so the heads run unchanged on the Mac.
-`prepare` skips (and counts) requests the grammar cannot reproduce; it never rewrites them.
+`rows.jsonl` splits: `dev` (the 200 laya held-out texts, never trained on), `fold0`..`fold4`
+(the other 2,800 FELN.json requests, for recipe choices), `extra` (laya-generated, training
+only). Defaults: LoRA rank 16, alpha 32 on every attention and MLP projection, lr 2e-4
+cosine, batch 16, 3 epochs, loss on target tokens only. Copy the model dir (128 MB for 4B) to
+the Mac; MLX and torch merge the same adapter into bf16 weights.
 
 ## Layout
 
 ```
-feln_clm/okf.py          OKF markdown → catalog (columns, kinds, domains, hints, GDB resource)
-feln_clm/grammar.py      spans, mentions, options, questions, framing, decompose / compose / SQL
-feln_clm/prepare.py      split + CLM typed-decision parquet (finetune.py --task choice input)
-feln_clm/embedders.py    Qwen3-8B on MLX (Mac) or vLLM (CUDA) behind CLM's Embedder
-feln_clm/decode.py       Translator: question rounds, head ensemble, joint constrained decode
-feln_clm/evaluate.py     exact / atom P-R / selective accuracy;  execute.py: GDB execution P-R
+feln_clm/okf.py        OKF markdown → catalog (columns, kinds, domains, hints, GDB resource)
+feln_clm/grammar.py    spans, options, decompose / compose / SQL, pieces, slot candidates, hints, prompt, tags
+feln_clm/prepare.py    splits + folds, training rows, values.json
+feln_clm/train.py      LoRA SFT (torch, CUDA host)
+feln_clm/lm.py         base + merged adapter on MLX (Mac) or torch (CUDA): prefill / beam step
+feln_clm/decode.py     Translator: constrained beam search over piece tries
+feln_clm/evaluate.py   exact / atom P-R / per-tag / selective accuracy;  execute.py: GDB execution P-R
 feln_clm/server.py, static/index.html   the single-page app
-feln_clm/cli.py          ask · evaluate · execute · serve · package
-scripts/                 finetune-gc5.sh (one head), sweep.py (decoder knobs on the val split)
-results/                 *.summary.json / *.execution.json per run (per-request JSONL stays local)
-tasks/                   todo.md (progress), lessons.md
+feln_clm/cli.py        ask · evaluate · execute · serve
 ```
 
 ## Tests
 
 ```sh
-uv run pytest -q   # span edge cases, oracle roundtrip of all 3,000 FELN.json queries, decoder constraints
+uv run pytest -q   # span edge cases; oracle: all 3,000 FELN.json queries decode back to gold
 uv run ruff check . && uv run ruff format --check .
 ```

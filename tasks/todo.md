@@ -1,25 +1,26 @@
-# feln-clm — text → FELN with a fine-tuned CLM
+# feln-clm v2 — constrained LoRA generator (replaces the CLM question rounds)
 
-Goal: beat feln-laya (74% exact FELN on its 200-request dev split) on accuracy,
-precision and recall. Speed is secondary. Train/tune on gc5, infer on the Mac (MLX).
+Goal: beat v1 (CLM ensemble, 81.5% exact / 94.0% execution on the 200 dev requests) and
+feln-lora v2 (60.0% / 84.0%) on accuracy, precision and recall. Max 3 layers. Train and
+evaluate on gc5; inference on the Mac (MLX). v1 stays in git history (441c423).
+
+Why (dev error analysis of v1, 37 misses): 11 undecidable from text, 8 gold contradicts
+text, 18 fixable: 9 relation/distance binding, 5 literal→column (the GDB knows), 4 subtype.
 
 ## Steps
 
-- [x] uv project; Qwen3-8B + CLM head; MLX embedder parity vs vLLM (cos ≥ 0.99993)
-- [x] OKF reader → catalog (kinds: subtype/code/yesno/flag/like/upper/number/date)
-- [x] decompose/compose; oracle roundtrip 3000/3000 on FELN.json (generated: 2109/2857,
-      rest use two ANDed/ORed conditions — outside FELN.json's grammar)
-- [x] questions + CLM typed-decision parquet; gc5 fine-tune with CLM `finetune.py` unchanged
-- [x] framing experiments (per-question test acc): raw 0.80 → lr/epochs 0.862 →
-      chat+options 0.886 → "Answer:" suffix 0.943 (CLM strips trailing whitespace)
-- [x] joint decoder + evaluate: options3 1 head = 73.0% exact (laya 74%);
-      1-layer 95% / 2-layer 79% / 3-layer 44% (laya 86/77/58)
-- [x] options4: subtype options restricted to mentioned subtypes + joint count constraint;
-      relation/distance questions name the bound subtype (targets 3-layer binding)
-- [x] literal penalty 2.0 (val split) + 5-seed ensemble: 81.5% exact (gc5 = Mac MLX)
-- [x] Mac MLX eval: 81.5%, 196/200 identical to gc5; execution P/R on the GDB vs laya
-- [x] SPA smoke test (API + page JS); README with measured results; lessons
-- [ ] (declined for now) ONNX export of heads
-- [x] latency: length-sorted MLX batching + option warm-up (median 8.9 → 4.0 s, same answers)
-- [x] prefix framing + MLX prefix KV cache: 2.3× faster encoding, but −2.1 val / −8.5 dev exact → rejected
-- [x] qprefix: val exact 73.0% (tie), dev 74.5% (−8), Mac median 10.7 s vs 4.0 s → rejected
+- [x] data checks: gold literal/distance coverage, secondary order vs text, noisy-gold flags
+- [x] grammar: drop question/framing code; target pieces + per-slot candidates (catalog only)
+- [x] value hints: literal → layer.column index built from the GDB (DuckDB)
+- [x] prepare: prompt + pieces rows, dev excluded, 5 folds for recipe choice
+- [x] train (gc5): hand-rolled LoRA on Qwen3, prompt-masked SFT, adapter only
+- [x] decode: token-level beam over a per-slot trie, joint constraints, confidence, alternatives
+      backends: MLX (Mac) and torch (gc5)
+- [x] evaluate: tags (implicit layer, noisy gold), per-tag exact; CV summary
+- [x] cli/server/SPA; drop CLM dependency, embedders, heads
+- [x] tests: oracle roundtrip through pieces, trie prefix-free, decoder constraints
+- [x] gc5: 4B vs 8B by 5-fold CV; final model on all non-dev; dev eval gc5 + Mac; execution
+- [x] README, CLAUDE.md; commit
+
+Result: dev exact 91.5% (v1 81.5%, laya 74.0%, feln-lora 60.0%), execution match 95.5%;
+5-fold CV 88.8% (4B = 8B); Mac = gc5 on 200/200; Mac median 1.64 s.

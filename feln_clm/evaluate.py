@@ -54,6 +54,9 @@ def summarize(rows: list[dict]) -> dict:
         "atom_f1": 2 * p * rc / max(p + rc, 1e-9),
         "median_seconds": statistics.median(r["seconds"] for r in rows),
     }
+    for tag in sorted({t for r in rows for t in r["tags"]}):
+        sel = [r["same"] for r in rows if tag in r["tags"]]
+        out[f"exact[{tag}]"], out[f"n[{tag}]"] = sum(sel) / len(sel), len(sel)
     for t in THRESHOLDS:
         acc = [r for r in rows if r["confidence"] >= t]
         out[f"coverage@{t}"] = len(acc) / n
@@ -73,12 +76,13 @@ def run(translator, examples: list[dict], output: str) -> dict:
             pred, gold = res["meta"], x["meta"]
             a, b = atoms(pred), atoms(gold)
             row = {
-                "index": i, "text": x["text"], "gold": gold, "pred": pred,
+                "index": i, "text": x["text"], "tags": x.get("tags", []), "gold": gold, "pred": pred,
                 "same": FELN(**pred).same(FELN(**gold)),
                 "partial": FELNCompare.partial(FELN(**gold), FELN(**pred)),
                 "atoms_tp": len(a & b), "atoms_pred": len(a), "atoms_gold": len(b),
                 "confidence": res["confidence"], "status": res["status"],
                 "seconds": res["seconds"], "decisions": res["decisions"],
+                "alternatives": [a["meta"] for a in res["alternatives"]],
             }  # fmt: skip
             rows.append(row)
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
