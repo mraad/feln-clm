@@ -20,6 +20,7 @@ MAX_TEXT = 2000
 
 def serve(translator, port: int) -> None:
     lock = threading.Lock()  # one encoder, one request at a time
+    print(f"[serve] warmed {translator.warmup()} option texts", flush=True)
     info = {
         "catalog_sha": translator.cat.sha,
         "format": translator.fmt,

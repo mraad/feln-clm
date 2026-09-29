@@ -47,7 +47,7 @@ New here: OKF reader, grammar (decompose/compose), MLX + vLLM encoders behind CL
 | — same set, requests with non-empty gold (77) | 81.8% | **85.7%** |
 | — mean Jaccard | 0.942 | **0.955** |
 | — macro precision / recall of feature IDs | **0.924** / 0.908 | 0.898 / **0.922** |
-| Median latency | 0.16 s (MLX) | 0.18 s (gpu-host) · 7.9 s (Mac MLX) |
+| Median latency | 0.16 s (MLX) | 0.18 s (gpu-host) · 4.0 s (Mac MLX, 30-request re-time) |
 
 Table numbers are the Mac MLX run unless marked gpu-host; MLX and gpu-host predictions are identical
 on 196/200 requests (near-ties flip), with the same exact score. Per request (gpu-host): 25
@@ -81,8 +81,9 @@ test. Decoder knobs were tuned only on the finetune validation split (285 reques
   humanizer noise such as "oil/gas wells" for gold *oil/gas shows*).
 - Ambiguous requests ("within 15 km of oil" — wells, pipelines or discoveries?) stay
   ambiguous; `confidence` (joint probability of the decisions) flags many of them.
-- MLX latency is ~8 s per request (median) on an M4 Max (≈10k prompt tokens: options are listed in
-  every question). The models are bf16; no quantization was evaluated.
+- MLX latency is ~4–9 s per request on an M4 Max: three sequential rounds of Qwen3-8B
+  prefill (~500 tokens/s) over prompts that list every option. The server embeds all fixed
+  option texts at startup (~9 s) and the encoder batches prompts length-sorted. The models are bf16; no quantization was evaluated.
 - Checkpoints are tied to the OKF catalog hash; a changed OKF needs `prepare` + retraining.
 
 ## Setup
