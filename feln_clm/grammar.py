@@ -435,10 +435,14 @@ def tags(cat: Catalog, text: str, d: Decisions) -> list[str]:
     subtype is never said."""
     low, named = normalize(text).lower(), mentions(cat, text)
     out = []
-    if any(not re.search(rf"\b{re.sub('(ies|s)$', '', n.lower())}", low) for n in d.layers):
+    if any(
+        not re.search(rf"\b{re.escape(re.sub('(ies|s)$', '', n.lower()))}", low) for n in d.layers
+    ):
         out.append("implicit")
     if any(
-        re.search(rf"\b{ly.noun}\b", low) for n, ly in cat.layers.items() if n not in d.layers
+        re.search(rf"\b{re.escape(ly.noun)}\b", low)
+        for n, ly in cat.layers.items()
+        if n not in d.layers
     ) or any(
         subtype_label(cat, n, d.subtype[n]) not in named for n in d.layers if d.subtype[n] != ANY
     ):

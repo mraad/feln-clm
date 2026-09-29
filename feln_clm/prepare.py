@@ -43,6 +43,7 @@ def main() -> None:
 
     from .execute import connect, value_index
 
+    os.makedirs(a.out, exist_ok=False)
     cat = okf.load(a.okf)
     index = value_index(cat, connect(cat, a.db))
     sets = value_sets(index)
@@ -58,7 +59,6 @@ def main() -> None:
     parts += [("extra", x) for f in a.extra for line in open(f)
               if (x := json.loads(line))["text"] not in seen]  # fmt: skip
 
-    os.makedirs(a.out, exist_ok=False)
     counts, skipped = collections.Counter(), collections.Counter()
     with open(os.path.join(a.out, "rows.jsonl"), "w") as f:
         for i, (split, x) in enumerate(parts):
