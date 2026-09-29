@@ -22,5 +22,4 @@ precision and recall. Speed is secondary. Train/tune on gc5, infer on the Mac (M
 - [ ] (declined for now) ONNX export of heads
 - [x] latency: length-sorted MLX batching + option warm-up (median 8.9 → 4.0 s, same answers)
 - [x] prefix framing + MLX prefix KV cache: 2.3× faster encoding, but −2.1 val / −8.5 dev exact → rejected
-- [ ] qprefix framing (question + options cacheable): rows built, gc5 unreachable 2026-09-29; run
-      `scripts/finetune-gc5.sh qprefix-p60 out/rows-qprefix 0 emb-qprefix --patience 60`, compare on val
+- [x] qprefix: val exact 73.0% (tie), dev 74.5% (−8), Mac median 10.7 s vs 4.0 s → rejected

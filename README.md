@@ -79,10 +79,14 @@ same prompts). Single heads, seed 1234, decoded with penalty 2:
 |---|---:|---:|---:|
 | `options` (default) | 0.963 | 73.0% | 82.5% |
 | `prefix` (options first) | 0.946 | 70.9% | 74.0% |
-| `qprefix` (question + options first) | pending (gc5 unreachable) | | |
+| `qprefix` (question + options first) | 0.953 | 73.0% | 74.5% |
 
-`prefix` is not worth its accuracy loss; options listed before the question cannot attend
-to it. The default model stays `options`.
+Neither is worth it. `prefix` loses accuracy (options listed before the question cannot
+attend to it); `qprefix` ties on val exact but is lower per question and 8 points lower on
+dev. End to end on the Mac it is also slower, not faster: median 10.7 s vs 4.0 s over 30
+dev requests, because each distinct cached head (role- and subtype-specific questions,
+per-request value/distance lists) forms its own small batch, and most heads are cold. The
+default model stays `options`.
 
 The dev split was used to compare recipes, so it is a development set, not a pristine
 test. Decoder knobs were tuned only on the finetune validation split (285 requests).
