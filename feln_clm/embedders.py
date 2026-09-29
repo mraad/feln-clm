@@ -15,23 +15,41 @@ MODEL = "Qwen/Qwen3-8B"
 
 
 class MLXEmbedder(Embedder):
-    def __init__(self, model: str = MODEL, max_tokens: int = 2048, batch: int = 16):
-        super().__init__(url="mlx://" + model, model=model, max_tokens=max_tokens, batch=batch)
+    """Misses arrive in one call; they run length-sorted in batches of at most ``tokens``
+    padded tokens, so short prompts are not padded to long ones (right padding is causal,
+    so each text's last-token state is unchanged by what it is batched with)."""
+
+    def __init__(self, model: str = MODEL, max_tokens: int = 2048, tokens: int = 8192):
+        super().__init__(url="mlx://" + model, model=model, max_tokens=max_tokens, batch=1 << 16)
         from mlx_lm import load
 
         self.lm, self.tok = load(model)
+        self.tokens = tokens
 
     def _fetch(self, texts: list[str]) -> tuple[list[np.ndarray], int]:
-        import mlx.core as mx
-
         cap = (self.max_tokens or 2048) - 1
         ids = [self.tok.encode(t, add_special_tokens=False)[-cap:] or [220] for t in texts]
+        order = sorted(range(len(ids)), key=lambda i: len(ids[i]))
+        out: list[np.ndarray] = [None] * len(ids)  # type: ignore[list-item]
+        batch: list[int] = []
+        for i in order + [-1]:
+            if batch and (i < 0 or len(ids[i]) * (len(batch) + 1) > self.tokens):
+                for j, v in zip(batch, self._forward([ids[j] for j in batch])):
+                    out[j] = v
+                batch = []
+            if i >= 0:
+                batch.append(i)
+        return out, sum(map(len, ids))
+
+    def _forward(self, ids: list[list[int]]) -> np.ndarray:
+        import mlx.core as mx
+
         pad = np.zeros((len(ids), max(map(len, ids))), dtype=np.int32)  # right pad: causal, unseen
         for i, row in enumerate(ids):
             pad[i, : len(row)] = row
         hidden = self.lm.model(mx.array(pad))  # [B, T, H] after the final norm
         last = hidden[mx.arange(len(ids)), mx.array([len(r) - 1 for r in ids])]
-        return list(l2(np.array(last.astype(mx.float32)))), sum(map(len, ids))
+        return l2(np.array(last.astype(mx.float32)))
 
     def healthy(self) -> bool:
         return True

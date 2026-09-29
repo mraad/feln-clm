@@ -70,6 +70,28 @@ class Translator:
         )
         self.structs = g.structures(self.cat)
 
+    def warmup(self) -> int:
+        """Embed every fixed option text once, so first requests pay only for their states."""
+        cat, qs = self.cat, {"layers": g.q_layers(self.cat)}
+        for name, ly in cat.layers.items():
+            p = name  # option texts do not depend on which layer is primary
+            qs[f"subtype:{name}"] = g.q_subtype(
+                cat, name, p, [*ly.columns[ly.subtype].domain, g.ANY]
+            )
+            qs[f"column:{name}"] = cq = g.q_column(cat, name, p)
+            for col in cq["criteria"]:
+                if col != g.NONE:
+                    qs[f"op:{name}|{col}"] = g.q_op(cat, name, p, col)
+            qs[f"relation:{name}"] = g.q_relation(cat, name, p, g.ANY)
+        texts = {
+            t
+            for fmt, _ in self.members
+            for q in g.frame(fmt, "", qs)[1].values()
+            for t in q["criteria"].values()
+        }
+        self.engine.embedder.embed(sorted(texts))
+        return len(texts)
+
     def _answer(self, text: str, qs: dict) -> dict:
         if not qs:
             return {}
