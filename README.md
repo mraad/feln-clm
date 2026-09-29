@@ -69,6 +69,21 @@ Recipe progression (per-question test accuracy, then end-to-end exact):
 | subtypes restricted to named ones, joint binding, relation names the subtype | 0.941 | 78.0% |
 | + literal penalty (tuned on finetune's validation split, 70.5→72.3%) + 5 seeds | 0.95 each | 81.5% |
 
+Latency experiment — cacheable framings (`prefix`, `qprefix`): put the request-independent
+part of each prompt (option list; for `qprefix` also the question) before the request, so
+the MLX encoder computes its KV state once and reuses it (`MLXEmbedder` does this for any
+text containing `PREFIX_END`; cached vs full encode cosine ≥ 0.99957; 2.3× faster on the
+same prompts). Single heads, seed 1234, decoded with penalty 2:
+
+| framing | per-question val | val exact (285) | dev exact (200) |
+|---|---:|---:|---:|
+| `options` (default) | 0.963 | 73.0% | 82.5% |
+| `prefix` (options first) | 0.946 | 70.9% | 74.0% |
+| `qprefix` (question + options first) | pending (gpu-host unreachable) | | |
+
+`prefix` is not worth its accuracy loss; options listed before the question cannot attend
+to it. The default model stays `options`.
+
 The dev split was used to compare recipes, so it is a development set, not a pristine
 test. Decoder knobs were tuned only on the finetune validation split (285 requests).
 

@@ -309,9 +309,19 @@ def subtype_codes(cat: Catalog, layer: str, named: dict[str, int]) -> list[str]:
 def q_subtype(cat: Catalog, layer: str, primary: str, codes: list[str]) -> dict:
     ly = cat[layer]
     st = ly.columns[ly.subtype]
-    crit = {c: (f"{ly.noun} of any {st.alias}" if c == ANY else f"{ly.noun} with {st.alias} {st.domain[c]}")
-            for c in codes}  # fmt: skip
-    return _choice(f"Which {st.alias} must {_role(cat, layer, primary)} have?", crit)
+
+    def text(c: str) -> str:
+        return (
+            f"{ly.noun} of any {st.alias}"
+            if c == ANY
+            else f"{ly.noun} with {st.alias} {st.domain[c]}"
+        )
+
+    q = _choice(
+        f"Which {st.alias} must {_role(cat, layer, primary)} have?", {c: text(c) for c in codes}
+    )
+    q["listing"] = [text(c) for c in [*st.domain, ANY]]  # the full domain, so a prefix never varies
+    return q
 
 
 def _named(cat: Catalog, layer: str, code: str) -> str:
@@ -373,7 +383,8 @@ def q_value(
 
 
 # --------------------------------------------------------------------------- framing
-FORMATS = ("raw", "options", "ids")
+FORMATS = ("raw", "options", "ids", "prefix", "qprefix")
+PREFIX_END = "\n\nRequest: "  # where a "prefix" turn's request-independent part ends
 IDS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _ASSISTANT = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nAnswer:"
 
@@ -385,9 +396,21 @@ def frame(fmt: str, text: str, qs: dict[str, dict]) -> tuple[str, dict[str, dict
     so the pooled last token is the one that predicts the answer (CLM strips trailing
     whitespace, so the turn must end on a visible token). ``ids`` labels them with single-token letters and the
     candidates become those letters: the pooled state is the model's multiple-choice answer.
+    ``prefix`` puts the option list first (subtypes list their full domain), then the request
+    and question, so everything before ``PREFIX_END`` can be encoded once and reused;
+    ``qprefix`` also states the question before the options (and again after the request).
     """
     if fmt == "raw":
         return text, qs
+    if fmt in ("prefix", "qprefix"):  # request-free head first, so its KV state caches
+        out = {}
+        for qid, q in qs.items():
+            listing = "\n".join(f"- {t}" for t in q.get("listing") or q["criteria"].values())
+            ask = f"{q['instructions']}\n" if fmt == "qprefix" else ""
+            ins = (f"<|im_start|>user\n{ask}Options:\n{listing}{PREFIX_END}{text}\n\n"
+                   f"{q['instructions']}\nAnswer with one option.{_ASSISTANT}")  # fmt: skip
+            out[qid] = {**q, "instructions": ins}
+        return "", out
     out = {}
     for qid, q in qs.items():
         texts = list(q["criteria"].values())

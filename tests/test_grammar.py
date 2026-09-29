@@ -37,6 +37,12 @@ def test_oracle_roundtrip_every_example():
         assert g.same(g.compose(cat, d), x["meta"]), x["text"]
         qs, _ = questions(cat, x["text"], d)
         g.frame("ids", x["text"], qs)  # every question fits the letter alphabet
+        for q in [
+            *g.frame("prefix", x["text"], qs)[1].values(),
+            *g.frame("qprefix", x["text"], qs)[1].values(),
+        ]:  # one cacheable, request-free head
+            head, _, tail = q["instructions"].partition(g.PREFIX_END)
+            assert tail.startswith(x["text"]) and g.PREFIX_END not in tail
 
 
 @needs_data
