@@ -1,3 +1,4 @@
 - `ssh host 'pkill -f PATTERN; …'` kills its own remote shell (the pattern is in its command line) → exit 255. Use `pkill -f '[p]attern'` or kill by PID.
 - Proposed a LoRA rewrite without checking sibling repos; feln-lora already did LoRA → before proposing an architecture, ls ~/workspace for sibling projects on the same task.
 - rsync of a HF model dir from gpu-host copied dangling links (weights live in the shared hub/blobs store) → copy the snapshot with `rsync -aL` and check sizes after.
+- Pushed the v2 rewrite straight to main, so no PR was possible → on the default branch, branch first before committing; push only the branch.
