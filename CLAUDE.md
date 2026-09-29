@@ -7,45 +7,48 @@ edit things.
 
 ```bash
 uv sync --extra mlx --extra exec --extra dev
-uv run pytest -q                       # needs data/ for the oracle + decoder tests
+uv run pytest -q                       # needs data/ for the oracle test
 uv run ruff check . && uv run ruff format --check .
 ```
 
 ## Training/inference contract (do not drift)
 
-- **Question text is the model.** Heads are trained on the exact state/option strings built by
-  `grammar.q_*` and `grammar.frame`. Any wording change to a question, option description,
-  role phrase or the `_ASSISTANT` suffix silently degrades a trained model: re-run `prepare`
-  and retrain. `feln-clm.json` records only the framing name, not a hash of the wording.
-- CLM's `schema.state_text` **strips trailing whitespace**; the framed turn must end on a
-  visible token (`Answer:`). Ending on `</think>\n\n` cost ~6 points of question accuracy.
-- Question ids are keys shared by `prepare.questions` and `decode.Translator`
-  (`subtype:L@P`, `column:L@P`, `op:L@P|col`, `value:L@P|col|op`, `relation:L@P=code`,
-  `distance:L@P=code`). Change both or neither.
-- `options` framing lists every option in the state; ≤52 options per question also keeps
-  the `ids` framing valid (test enforces it). The condition is split into column → op for
-  that reason; do not merge them back into one 127-option question.
-- `decompose` searches the same space `render_*` produces, so the oracle roundtrip test
-  (3,000/3,000 FELN.json) is the guard for any grammar change. Keep it at 100%.
-- Subtype questions only offer subtypes the request names (`mentions`), then `any`.
-  Relation/distance questions name the bound subtype, so they are asked after the joint
-  subtype decode (round 3). Training teacher-forces the gold subtype there.
+- **Piece text is the model.** The adapter is trained on the exact strings of
+  `grammar.prompt`, `grammar.hints`, `grammar.head`, `grammar.condition` (option phrases in
+  `_options`, `RELATIONS`) and `END`. Any wording change silently degrades a trained model:
+  re-run `prepare` and retrain. `feln-clm.json` records the catalog hash, not the wording.
+- **Pieces are tokenized one at a time**, in training (`train.py`) and in the decoder's
+  tries (`decode.Translator.ids`), both through `lm.encode`. Never tokenize the joined
+  target string: BPE merges across piece boundaries would make gold unreachable.
+- The oracle test decodes all 3,000 FELN.json queries through the real beam search with a
+  byte tokenizer and an LM that prefers gold. Keep it at 100%: it guards `decompose`,
+  `pieces`, the slot candidates and the decoder's hard rules together.
+- Hard rules live only in `Translator._trie` (≤ `MAX_LAYERS` distinct layers, a literal
+  serves one condition, distinct distances when the request has several). There is no
+  unused-literal penalty: 0, 2 and 4 nats gave identical fold0 exact for both sizes.
+- Secondaries keep gold order (`decompose` no longer sorts them): the text follows it in
+  94% of 3-layer requests, so the model learns to write layers in the order they are said.
+- The prompt hints come from `values.json` (lower-cased distinct values of every text
+  column, built from the GDB by `prepare`). It travels with the model dir; rebuild both
+  if the data changes.
 - A model refuses an OKF whose `Catalog.sha` differs; do not bypass by editing the config.
 
 ## Evaluation hygiene
 
-- The 200 `laya-heldout` requests are a **development** set (recipe comparison). Tune decoder
-  knobs (`penalty`, `beam`, `top`) only with `scripts/sweep.py` on `val:` (finetune's own
-  validation split, seed 1234). Seed-ensemble members used other seeds, so ensembles leak
-  into that split: tune knobs with the seed-1234 head only.
-- `evaluate` and the embedding caches never overwrite; use a new output path per run.
+- The 200 `laya-heldout` requests (`split == "dev"`) are a **development** set, never
+  trained on. Recipe choices (base size, epochs, noisy filter, `beam`) are made
+  on `fold0`..`fold4` (cross-validation over the other FELN.json requests), not on dev.
+- `tags`: `implicit` (a gold layer never named) and `noisy` (gold contradicts the text).
+  Report exact per tag; `noisy` rows are excluded from training by default.
+- `evaluate` never overwrites; use a new output path per run.
 - Execution metrics reproject the GDB (EPSG:4326 assumed) to EPSG:3035 metres; 123 of 200
-  gold queries return no features, so read the non-empty-gold rows.
+  dev gold queries return no features, so read the non-empty-gold rows.
 
 ## Remote host
 
-- Training runs on gpu-host (2× RTX PRO 6000) with the in-process vLLM encoder; the Mac runs MLX.
-  Parity checked at cosine ≥ 0.99993; 196/200 dev predictions identical (near-ties flip).
+- Training and CV evaluation run on gpu-host (2× RTX PRO 6000) with the `torch` backend; the
+  Mac runs `mlx`. Both merge the same adapter into bf16 weights.
 - `ssh gpu-host 'pkill -f PATTERN; …'` kills its own shell; use `pkill -f '[p]attern'` or PIDs.
-- Detach long jobs with `setsid nohup … < /dev/null > log 2>&1 &` or ssh blocks.
-- NorthSea-derived data may go to gpu-host (user-approved for training); never into git.
+- Detach long jobs with `setsid nohup … < /dev/null > log 2>&1 &` or ssh blocks. In a
+  `cd X && … &` chain the `&` backgrounds the whole chain: later commands run elsewhere.
+- NorthSea-derived data (rows, values.json) may go to gpu-host (user-approved); never into git.

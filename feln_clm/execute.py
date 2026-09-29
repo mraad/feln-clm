@@ -51,6 +51,19 @@ def connect(cat: okf.Catalog, db: str, crs: str = "EPSG:4326"):
     return con
 
 
+def value_index(cat: okf.Catalog, con) -> dict[str, dict[str, list[str]]]:
+    """Lower-cased distinct values of every text column, for ``grammar.hints``."""
+    return {
+        name: {
+            c.name: sorted({str(v).lower() for (v,) in con.execute(
+                f'SELECT DISTINCT "{c.name}" FROM "{ly.table}" WHERE "{c.name}" IS NOT NULL').fetchall()})
+            for c in ly.columns.values()
+            if c.kind in ("like", "upper", "text")
+        }
+        for name, ly in cat.layers.items()
+    }  # fmt: skip
+
+
 def run(con, cat: okf.Catalog, meta: dict) -> tuple[set[int], str]:
     try:
         layers = [SimpleNamespace(name=n, table_name=cat[n].table) for n in meta["layers"]]

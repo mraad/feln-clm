@@ -5,26 +5,23 @@ build-backend = "hatchling.build"
 [project]
 name = "feln-clm"
 version = "0.1.0"
-description = "Text to FELN with a fine-tuned Contrastive Language Model over an OKF catalog"
+description = "Text to FELN with a LoRA-tuned Qwen3, decoding constrained to an OKF catalog"
 requires-python = ">=3.12"
-dependencies = ["contrastive-lm", "feln", "numpy", "pyarrow", "torch"]
+dependencies = ["feln", "numpy"]
 
 [project.optional-dependencies]
 mlx = ["mlx-lm>=0.28"]
 exec = ["duckdb>=1.1"]
+train = ["torch", "transformers", "safetensors"]  # CUDA host only
 dev = ["pytest", "ruff"]
 
 [project.scripts]
 feln-clm = "feln_clm.cli:main"
 
 [tool.uv]
-# CLM pins vLLM (Linux + CUDA); here it only supplies schema/heads/engine. The remote
-# trainer installs vLLM itself; locally the encoder runs on MLX.
-environments = ["sys_platform == 'darwin'"]
-override-dependencies = ["vllm ; sys_platform == 'linux'"]
+environments = ["sys_platform == 'darwin'"]  # the CUDA host installs with `uv pip` (README)
 
 [tool.uv.sources]
-contrastive-lm = { path = "../CLM", editable = true }
 feln = { path = "../feln", editable = true }
 
 [tool.pytest.ini_options]

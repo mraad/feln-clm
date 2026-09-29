@@ -58,7 +58,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 12px; }
 <main>
   <header>
     <h1>Text → FELN</h1>
-    <span class="sub">Qwen3-8B encoder + fine-tuned CLM heads, answered as typed choices over the OKF catalog</span>
+    <span class="sub">Qwen3 + LoRA, constrained to the OKF catalog</span>
     <span class="sub" id="sha"></span>
   </header>
 
@@ -77,7 +77,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 12px; }
     <section class="panel" style="margin-top:16px">
       <div class="row" style="margin-top:0">
         <span class="status" id="status"></span>
-        <span class="meter" title="joint probability of the chosen decisions"><span id="conf-bar"></span></span>
+        <span class="meter" title="probability of the generated query"><span id="conf-bar"></span></span>
         <span id="conf" class="sub"></span>
         <span id="secs" class="sub"></span>
       </div>
@@ -122,8 +122,8 @@ function render(res) {
   $("secs").textContent = `${res.seconds.toFixed(2)} s`;
   renderLayers(res.meta);
   $("json").textContent = JSON.stringify(res.meta, null, 2);
-  const rows = Object.entries(res.decisions).map(([q, d]) =>
-    el("tr", {}, el("td", { className: "muted", textContent: q }), el("td", { textContent: d.choice }),
+  const rows = res.decisions.map((d) =>
+    el("tr", {}, el("td", { textContent: d.piece }),
        el("td", { className: "p", title: pct(d.probability) },
           el("span", { className: "meter" }, el("span", { style: `width:${pct(d.probability)}` })))));
   $("decisions").replaceChildren(...rows);
