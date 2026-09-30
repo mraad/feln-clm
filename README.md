@@ -37,7 +37,7 @@ always reachable (the oracle test decodes all 3,000 FELN.json queries back to go
 
 ### 200 dev requests (feln-laya's held-out split; never trained on, no recipe choice made on it)
 
-| | **feln-clm v2** (Qwen3-4B + LoRA) | v1 (CLM, 5 heads) | feln-laya | feln-lora v2 |
+| | **feln-clm v2** (Qwen3-4B + LoRA; Mac MLX run) | v1 (CLM, 5 heads) | feln-laya | feln-lora v2 |
 |---|---:|---:|---:|---:|
 | Exact FELN (`FELN.same`) | **91.5%** | 81.5% | 74.0% | 60.0%¹ |
 | — a gold layer never named in the text (110) | **86.4%** | 73.6% | — | — |
