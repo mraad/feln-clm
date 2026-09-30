@@ -40,23 +40,26 @@ always reachable (the oracle test decodes all 3,000 FELN.json queries back to go
 | | **feln-clm v2** (Qwen3-4B + LoRA) | v1 (CLM, 5 heads) | feln-laya | feln-lora v2 |
 |---|---:|---:|---:|---:|
 | Exact FELN (`FELN.same`) | **91.5%** | 81.5% | 74.0% | 60.0%¹ |
-| — a gold layer never named in the text (110) | **87.3%** | 73.6% | — | — |
-| Atom precision / recall (layers, predicates, relations) | **0.962 / 0.961** | 0.939 / 0.924 | — | — |
-| Accuracy / coverage at confidence ≥ 0.8 | **95.9% / 85.5%** | 92.1% / 63.0% | 91.6% / 53.5% | — |
-| Accuracy / coverage at confidence ≥ 0.9 | **97.0% / 82.5%** | 94.8% / 48.0% | — | — |
-| Executed on NorthSea.gdb: same feature set | **95.5%** | 94.0% | 92.0% | 84.0% |
-| — same set, requests with non-empty gold (77) | **89.6%** | 85.7% | 81.8% | 66.2% |
-| — mean Jaccard | **0.966** | 0.955 | 0.942 | 0.859 |
-| — macro precision / recall of feature IDs | **0.963 / 0.937** | 0.898 / 0.922 | 0.924 / 0.908 | 0.831 / 0.734 |
-| — micro precision / recall of feature IDs | 0.654 / 0.696 | 0.462 / 0.738 | **0.687 / 0.806** | 0.646 / 0.715 |
+| — a gold layer never named in the text (110) | **86.4%** | 73.6% | — | — |
+| Atom precision / recall (layers, predicates, relations) | **0.961 / 0.962** | 0.939 / 0.924 | — | — |
+| Accuracy / coverage at confidence ≥ 0.8 | **95.9% / 85.0%** | 92.1% / 63.0% | 91.6% / 53.5% | — |
+| Accuracy / coverage at confidence ≥ 0.9 | **98.1% / 80.0%** | 94.8% / 48.0% | — | — |
+| Executed on NorthSea.gdb: same feature set | **95.0%** | 94.0% | 92.0% | 84.0% |
+| — same set, requests with non-empty gold (77) | **88.3%** | 85.7% | 81.8% | 66.2% |
+| — mean Jaccard | **0.961** | 0.955 | 0.942 | 0.859 |
+| — macro precision / recall of feature IDs | **0.952 / 0.937** | 0.898 / 0.922 | 0.924 / 0.908 | 0.831 / 0.734 |
+| — micro precision / recall of feature IDs | 0.531 / 0.696 | 0.462 / 0.738 | **0.687 / 0.806** | 0.646 / 0.715 |
 | Invalid outputs | 0 | 0 | — | 20 |
-| Median latency | 0.59 s (gc5) · 1.64 s (Mac MLX; p90 2.5 s) | 4.0 s (Mac) | 0.16 s | 2.4 s |
+| Median latency | 0.59 s (gc5) · 1.56 s (Mac MLX; p90 2.5 s) | 4.0 s (Mac) | 0.16 s | 2.4 s |
 
 ¹ after ILIKE→LIKE and INT→INTEGER normalisation (49.5% raw). feln-lora (Nemotron-4B LoRA,
 free-form JSON under a shape-only grammar) was trained on templated questions and its own
 catalog, so this is its transfer to these reworded requests, not its in-domain score.
 
-Mac MLX and gc5 torch predictions are identical on 200/200 dev requests. Micro feature precision/recall is dominated by a few requests with very large
+Mac MLX and gc5 torch predictions agree on 199/200 dev requests (one near-tie flips). The
+first v2 training, before column synonyms, also scored 91.5% exact, with execution 95.5%
+(non-empty 89.6%, micro precision 0.654): retraining reshuffled six near-ties (two fixed,
+two broken, among them one coin flip that now returns a large feature set). Micro feature precision/recall is dominated by a few requests with very large
 result sets (a wrong subtype on a wells query returns ~1,900 wells); per request (macro)
 v2 leads on both. Execution metrics run gold and predicted FELN with DuckDB spatial on the
 GDB (EPSG:3035 metres); 123 of 200 gold queries return no features.
@@ -111,6 +114,12 @@ the column's Query hints, comma-separated:
 The prompt then names the column when a request uses one of them, and `prepare` adds
 training copies of the requests on that column with the name swapped for each other one
 (same gold). Editing the OKF changes its hash: re-run `prepare` and retrain.
+
+With `water_depth` "Also called: water depth, depth", "oil wells with a depth over 100",
+"gas wells where depth is less than 70.5" and "wells with depth between 60 and 80" decode
+to well water depth at confidence 1.00 (before: "wellbore name is not blank", 0.18–0.43);
+fold 0 exact 90.2% → 90.5%, dev unchanged at 91.5%. A comparative ("deeper than 120") is
+not a name and is still misread: it needs training requests that say it.
 
 ## Setup (Mac)
 
