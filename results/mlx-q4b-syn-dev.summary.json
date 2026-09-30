@@ -1,0 +1,21 @@
+{
+ "n": 200,
+ "exact": 0.915,
+ "partial": 0.9604993064953959,
+ "atom_precision": 0.9608510638297872,
+ "atom_recall": 0.9624893435635123,
+ "atom_f1": 0.9616695059625213,
+ "median_seconds": 1.556,
+ "exact[implicit]": 0.8636363636363636,
+ "n[implicit]": 110,
+ "exact[noisy]": 0.2,
+ "n[noisy]": 5,
+ "coverage@0.5": 0.985,
+ "accuracy@0.5": 0.9238578680203046,
+ "coverage@0.8": 0.85,
+ "accuracy@0.8": 0.9588235294117647,
+ "coverage@0.9": 0.8,
+ "accuracy@0.9": 0.98125,
+ "coverage@0.95": 0.785,
+ "accuracy@0.95": 0.9808917197452229
+}

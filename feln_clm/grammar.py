@@ -425,8 +425,26 @@ def hints(cat: Catalog, index: dict[str, dict[str, set[str]]], found: list[Span]
     return "; ".join(out)
 
 
-def prompt(text: str, hint: str) -> str:
-    return f"Request: {text}\n" + (f"Values: {hint}\n" if hint else "") + "FELN:"
+def column_hints(cat: Catalog, text: str) -> str:
+    """Column synonyms (OKF 'Also called') the request uses: "'depth' = Wells well water
+    depth". Longer names win, so 'water depth' is not also read as 'depth'."""
+    cols: dict[str, list[str]] = {}
+    for n, ly in cat.layers.items():
+        for c in ly.columns.values():
+            for w in c.synonyms:
+                cols.setdefault(w.lower(), []).append(f"{n} {c.alias}")
+    low, out = normalize(text).lower(), []
+    for w in sorted(cols, key=len, reverse=True):
+        pattern = rf"(?<!\w){re.escape(w)}(?!\w)"
+        if re.search(pattern, low):
+            out.append(f"'{w}' = {', '.join(cols[w])}")
+            low = re.sub(pattern, " ", low)
+    return "; ".join(out)
+
+
+def prompt(text: str, values: str, columns: str = "") -> str:
+    return (f"Request: {text}\n" + (f"Values: {values}\n" if values else "")
+            + (f"Columns: {columns}\n" if columns else "") + "FELN:")  # fmt: skip
 
 
 def tags(cat: Catalog, text: str, d: Decisions) -> list[str]:

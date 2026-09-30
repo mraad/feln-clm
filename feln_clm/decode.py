@@ -113,7 +113,9 @@ class Translator:
         self.found = g.spans(text)
         self.dists = list(dict.fromkeys(s.label for s in self.found if s.kind == "dist"))
         self._tries, self._cond_cache = {}, {}
-        prompt = g.prompt(text, g.hints(self.cat, self.values, self.found))
+        prompt = g.prompt(
+            text, g.hints(self.cat, self.values, self.found), g.column_hints(self.cat, text)
+        )
         logits = self.lm.start(lm.encode(self.lm.tok, prompt))
         beams = [((), self._trie(()), 0.0, 0.0)]  # (acts, node, score, current piece log-prob)
         finished = []
