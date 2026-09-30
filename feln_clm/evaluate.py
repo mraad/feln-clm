@@ -85,9 +85,9 @@ def run(translator, examples: list[dict], output: str) -> dict:
                     "seconds": res["seconds"], "decisions": res["decisions"],
                     "alternatives": [a["meta"] for a in res["alternatives"]],
                 }  # fmt: skip
-                rows.append(row)
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 f.flush()
+                rows.append(row)  # after the write: a summary never counts an unwritten row
                 if (i + 1) % 20 == 0:
                     print(
                         f"[eval] {i + 1}/{len(examples)} exact {summarize(rows)['exact']:.3f}",

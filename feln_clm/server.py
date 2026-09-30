@@ -16,6 +16,7 @@ EXAMPLES = [
     "Get condensate discoveries in Denmark more than 10 miles from all oil wells.",
 ]
 MAX_TEXT = 2000
+IDLE = 5  # seconds a connection may sit without sending, so shutdown never waits on it
 
 
 def serve(translator, port: int) -> None:
@@ -29,6 +30,8 @@ def serve(translator, port: int) -> None:
     }  # fmt: skip
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = IDLE  # socket reads/writes; inference itself is not bounded
+
         def _send(self, code: int, body: bytes, kind: str) -> None:
             self.send_response(code)
             self.send_header("Content-Type", kind)

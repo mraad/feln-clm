@@ -50,3 +50,27 @@ def test_signal_finishes_the_request_in_flight_then_exits(sig):
     assert got == {"status": 200, "body": {"meta": {"text": "hi"}}}, out
     assert proc.returncode == 128 + sig, out
     assert "shutting down" in out and f"stopped by {sig.name}" in out, out
+
+
+def test_idle_connection_does_not_block_shutdown():
+    """A client that connects and sends nothing is dropped after server.IDLE seconds."""
+    from feln_clm.server import IDLE
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    proc = subprocess.Popen([sys.executable, "-c", SERVER, str(port)], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)  # fmt: skip
+    for _ in range(100):
+        try:
+            idle = socket.create_connection(("127.0.0.1", port), timeout=1)
+            break
+        except OSError:
+            time.sleep(0.1)
+    time.sleep(0.2)
+    t0 = time.time()
+    proc.send_signal(signal.SIGTERM)
+    out, _ = proc.communicate(timeout=IDLE + 5)
+    idle.close()
+    assert proc.returncode == 128 + signal.SIGTERM, out
+    assert time.time() - t0 < IDLE + 2, out
