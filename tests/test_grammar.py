@@ -85,7 +85,17 @@ def test_comparatives_hint_the_column_and_rewrite_training_text():
     from feln_clm.prepare import variants
 
     cat = okf.load(DATA / "okf")
-    assert g.column_hints(cat, "wells deeper than 120") == "'deeper' = Wells well water depth >"
+    assert (
+        g.column_hints(cat, "wells deeper than 120") == "'deeper than' = Wells well water depth >"
+    )
+    assert (
+        g.column_hints(cat, "wells no deeper than 9")
+        == "'no deeper than' = Wells well water depth <="
+    )
+    assert (
+        g.column_hints(cat, "at least as deep as 9")
+        == "'at least as deep as' = Wells well water depth >="
+    )
     text = "Show me gas wells with a well water depth greater than 111.0, within 5 km of oil."
     d = g.decompose(cat, text, {"layers": ["Wells"], "where": [
         "content_type = cast(2 as SMALLINT) and (water_depth > cast(111.0 as DOUBLE PRECISION))"],
@@ -98,3 +108,22 @@ def test_comparatives_hint_the_column_and_rewrite_training_text():
         "relations": []})  # fmt: skip
     assert all("'depth over 5'" in v for v in variants(cat, quoted, d))  # literals untouched
     assert "Show gas wells named 'depth over 5' deeper than 111.0." in variants(cat, quoted, d)
+
+
+@needs_data
+def test_at_least_and_at_most_comparatives_rewrite_their_own_rows():
+    from feln_clm.prepare import variants
+
+    cat = okf.load(DATA / "okf")
+    for where, said, want in [
+        ("water_depth >= cast(70.0 as DOUBLE PRECISION)", "where the well water depth is at least 70.0",
+         {"Find gas wells at least as deep as 70.0.", "Find gas wells no shallower than 70.0."}),
+        ("water_depth <= cast(72.0 as DOUBLE PRECISION)", "where well water depth is no more than 72.0",
+         {"Find gas wells at most as deep as 72.0.", "Find gas wells no deeper than 72.0."}),
+    ]:  # fmt: skip
+        text = f"Find gas wells {said}."
+        d = g.decompose(cat, text, {"layers": ["Wells"], "where": [
+            f"content_type = cast(2 as SMALLINT) and ({where})"], "relations": []})  # fmt: skip
+        got = variants(cat, text, d)
+        assert want <= set(got), got
+        assert not any("deeper than" in v and "no deeper" not in v for v in got), got  # not > / <

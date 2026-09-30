@@ -12,7 +12,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-COMPARE = {"greater": "gt", "less": "lt"}  # 'Comparatives:' hint word -> option op
+COMPARE = {"greater": "gt", "less": "lt", "at least": "ge", "at most": "le"}  # hint -> option op
+SYMBOL = {"gt": ">", "lt": "<", "ge": ">=", "le": "<="}
 CASTS = {"SmallInteger": "SMALLINT", "Integer": "INTEGER", "Double": "DOUBLE PRECISION"}
 
 
@@ -42,8 +43,8 @@ class Column:
 
     @property
     def comparatives(self) -> dict[str, str]:
-        """Words that compare the column: a hint 'Comparatives: deeper = greater, shallower =
-        less' gives {"deeper": "gt", "shallower": "lt"}."""
+        """Phrases that compare the column: a hint 'Comparatives: deeper than = greater, no
+        deeper than = at most' gives {"deeper than": "gt", "no deeper than": "le"}."""
         pairs = [p.partition("=") for h in self.hints if h.startswith("Comparatives:")
                  for p in h.removeprefix("Comparatives:").split(",")]  # fmt: skip
         return {w.strip(): COMPARE[op.strip()] for w, _, op in pairs}

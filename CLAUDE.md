@@ -32,7 +32,8 @@ uv run ruff check . && uv run ruff format --check .
   column, built from the GDB by `prepare`). It travels with the model dir; rebuild both
   if the data changes.
 - Column synonyms come from OKF hints `Also called: a, b` (`Column.synonyms`), comparatives
-  from `Comparatives: deeper = greater, …` (`Column.comparatives`, rewritten in training
+  from `Comparatives: deeper than = greater, no deeper than = at most, …` (phrases; ops
+  greater/less/at least/at most) (`Column.comparatives`, rewritten in training
   text by `prepare.PHRASES`). `prepare`
   writes swapped-name copies as split `<split>+`; `train` drops `<holdout>+` with its fold.
 - A model refuses an OKF whose `Catalog.sha` differs; do not bypass by editing the config.
