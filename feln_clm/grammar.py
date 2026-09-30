@@ -21,7 +21,7 @@ from feln import FELN, parse_relation
 from feln.identical import identical
 from feln.units import to_meters
 
-from .okf import Catalog, Column, Layer
+from .okf import SYMBOL, Catalog, Column, Layer
 
 RELATIONS = {  # FELN kind -> how a head piece says it ("{}" = distance span)
     "intersects": "intersecting",
@@ -427,7 +427,7 @@ def hints(cat: Catalog, index: dict[str, dict[str, set[str]]], found: list[Span]
 
 def column_hints(cat: Catalog, text: str) -> str:
     """Column synonyms (OKF 'Also called') and comparatives (OKF 'Comparatives') the request
-    uses: "'depth' = Wells well water depth; 'deeper' = Wells well water depth >". Longer
+    uses: "'depth' = Wells well water depth; 'deeper than' = Wells well water depth >". Longer
     names win, so 'water depth' is not also read as 'depth'."""
     cols: dict[str, list[str]] = {}
     for n, ly in cat.layers.items():
@@ -435,7 +435,7 @@ def column_hints(cat: Catalog, text: str) -> str:
             for w in c.synonyms:
                 cols.setdefault(w.lower(), []).append(f"{n} {c.alias}")
             for w, op in c.comparatives.items():
-                cols.setdefault(w.lower(), []).append(f"{n} {c.alias} {'>' if op == 'gt' else '<'}")
+                cols.setdefault(w.lower(), []).append(f"{n} {c.alias} {SYMBOL[op]}")
     low, out = normalize(text).lower(), []
     for w in sorted(cols, key=len, reverse=True):
         pattern = rf"(?<!\w){re.escape(w)}(?!\w)"

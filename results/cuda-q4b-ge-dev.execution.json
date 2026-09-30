@@ -1,0 +1,14 @@
+{
+ "n": 200,
+ "execution_match": 0.965,
+ "mean_jaccard": 0.9708722445464982,
+ "gold_nonempty": 77,
+ "execution_match_nonempty": 0.922077922077922,
+ "macro_precision": 0.9639374287861525,
+ "macro_recall": 0.9499590574968445,
+ "macro_f1": 0.9568971967904283,
+ "micro_precision": 0.6557449309432853,
+ "micro_recall": 0.701839911935839,
+ "micro_f1": 0.6780098746676794,
+ "prediction_errors": 0
+}
