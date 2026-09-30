@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+COMPARE = {"greater": "gt", "less": "lt"}  # 'Comparatives:' hint word -> option op
 CASTS = {"SmallInteger": "SMALLINT", "Integer": "INTEGER", "Double": "DOUBLE PRECISION"}
 
 
@@ -38,6 +39,14 @@ class Column:
         """Other names requests use for the column: a hint 'Also called: a, b'."""
         return [w.strip() for h in self.hints if h.startswith("Also called:")
                 for w in h.removeprefix("Also called:").split(",") if w.strip()]  # fmt: skip
+
+    @property
+    def comparatives(self) -> dict[str, str]:
+        """Words that compare the column: a hint 'Comparatives: deeper = greater, shallower =
+        less' gives {"deeper": "gt", "shallower": "lt"}."""
+        pairs = [p.partition("=") for h in self.hints if h.startswith("Comparatives:")
+                 for p in h.removeprefix("Comparatives:").split(",")]  # fmt: skip
+        return {w.strip(): COMPARE[op.strip()] for w, _, op in pairs}
 
 
 @dataclass
