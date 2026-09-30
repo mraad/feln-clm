@@ -58,6 +58,7 @@ uv run ruff check . && uv run ruff format --check .
 - Training and CV evaluation run on gpu-host (2× RTX PRO 6000) with the `torch` backend; the
   Mac runs `mlx`. Both merge the same adapter into bf16 weights.
 - `ssh gpu-host 'pkill -f PATTERN; …'` kills its own shell; use `pkill -f '[p]attern'` or PIDs.
-- Detach long jobs with `setsid nohup … < /dev/null > log 2>&1 &` or ssh blocks. In a
-  `cd X && … &` chain the `&` backgrounds the whole chain: later commands run elsewhere.
-- NorthSea-derived data (rows, values.json) may go to gpu-host (user-approved); never into git.
+- Run long jobs in a named tmux session so disconnecting does not stop training.
+  Use your configured SSH alias in place of `gpu-host` in examples.
+- Project data and model weights must remain outside Git. Transfer them only to
+  training hosts explicitly approved for the data.

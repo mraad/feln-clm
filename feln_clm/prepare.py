@@ -113,7 +113,7 @@ def main() -> None:
                        "pieces": g.pieces(cat, d)}  # fmt: skip
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
     json.dump(index, open(os.path.join(a.out, "values.json"), "w"), ensure_ascii=False)
-    report = {"catalog_sha": cat.sha, "okf": os.path.abspath(a.okf), "seed": a.seed,
+    report = {"catalog_sha": cat.sha, "seed": a.seed,
               "rows": dict(counts), "skipped": dict(skipped)}  # fmt: skip
     json.dump(report, open(os.path.join(a.out, "prepare.json"), "w"), indent=1)
     print(json.dumps(report, indent=1))

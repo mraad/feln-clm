@@ -276,7 +276,10 @@ def main():
             }
             for p in ("train", "validation", "test")
         },
-        "input_sha256": {str(p): hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in a.pools},
+        "input_sha256": [
+            {"file": Path(p).name, "sha256": hashlib.sha256(Path(p).read_bytes()).hexdigest()}
+            for p in a.pools
+        ],
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
     (out / "texts.json").write_text(json.dumps(texts, ensure_ascii=False))

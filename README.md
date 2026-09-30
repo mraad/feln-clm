@@ -7,7 +7,7 @@ from the OKF hints, never generated. Training and cross-validation run on a CUDA
 (gpu-host); inference runs on the Mac (MLX). The goal is accuracy, precision and recall.
 
 v1 of this repo (CLM: frozen Qwen3-8B embeddings + choice heads answering four rounds of
-typed questions) is in git history at `441c423`; its numbers stay in the table below.
+typed questions) is in Git history; its numbers stay in the table below.
 
 ## How it works
 
@@ -325,12 +325,16 @@ candidate-set counts from unique request counts. Missing-gold training sets are 
 missing-gold validation/test sets count as incorrect. This is a pilot within fold 0,
 not five-fold cross-validation and not an evaluation on the 200 development requests.
 
-Remote long-running jobs must run in tmux. The current isolated experiment uses session
-`feln-contrastive-20260930` and directory
-`~/feln-clm/experiments/contrastive-20260930`, with separate windows for both
-candidate jobs and the dependent embedding/training job. Logs and exit-status files stay
-under `logs/`; checkpoints, partition manifests, and test predictions stay under
-`artifacts/`. Reattach with `ssh -t gpu-host 'tmux attach -t feln-contrastive-20260930'`.
+Run remote collection and training in a named tmux session so a disconnect does not
+stop the jobs. Use your own SSH alias in place of `gpu-host`, and keep experiment
+artifacts in a private directory outside the tracked source files. For example:
+
+```sh
+ssh -t gpu-host 'tmux new-session -A -s feln-contrastive'
+```
+
+Run the collection and training commands inside that session. Keep logs, checkpoints,
+partition manifests, and test predictions in ignored artifact directories.
 
 Completed pilot: 159 training, 44 validation, and 38 test requests after filtering,
 with two candidate sets per request. Both projection seeds selected epoch 2 on validation
@@ -342,4 +346,4 @@ bottleneck. Both rankings returned the same gold feature sets on the current dat
 (76/76, including 30 nonempty-gold cases); that does not erase their semantic differences.
 This small pilot does not justify enabling the reranker in production. Aggregate results
 are in `results/contrastive-fold0-pilot.summary.json`; local checkpoints and raw test
-predictions are under ignored `out/contrastive-gpu-host/pilot/`.
+predictions are under ignored `out/`.

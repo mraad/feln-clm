@@ -2,7 +2,7 @@
 
 Goal: beat v1 (CLM ensemble, 81.5% exact / 94.0% execution on the 200 dev requests) and
 feln-lora v2 (60.0% / 84.0%) on accuracy, precision and recall. Max 3 layers. Train and
-evaluate on gpu-host; inference on the Mac (MLX). v1 stays in git history (441c423).
+evaluate on gpu-host; inference on the Mac (MLX). v1 stays in Git history.
 
 Why (dev error analysis of v1, 37 misses): 11 undecidable from text, 8 gold contradicts
 text, 18 fixable: 9 relation/distance binding, 5 literal→column (the GDB knows), 4 subtype.

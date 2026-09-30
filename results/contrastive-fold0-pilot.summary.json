@@ -30,10 +30,16 @@
         "requests": 38
       }
     },
-    "input_sha256": {
-      "~/feln-clm/experiments/contrastive-20260930/candidates/fold0-s0.jsonl": "6dfd19b9ec76a4367be184f55ee5b8a202acf1a6e17ff99518248c14ed24ab1e",
-      "~/feln-clm/experiments/contrastive-20260930/candidates/fold0-s1.jsonl": "a72b4b3d719584292e7462b3ddf57ef90603421199f827c969f791b888fd1cf5"
-    }
+    "input_sha256": [
+      {
+        "file": "fold0-s0.jsonl",
+        "sha256": "6dfd19b9ec76a4367be184f55ee5b8a202acf1a6e17ff99518248c14ed24ab1e"
+      },
+      {
+        "file": "fold0-s1.jsonl",
+        "sha256": "a72b4b3d719584292e7462b3ddf57ef90603421199f827c969f791b888fd1cf5"
+      }
+    ]
   },
   "runs": [
     {
