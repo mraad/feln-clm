@@ -426,13 +426,16 @@ def hints(cat: Catalog, index: dict[str, dict[str, set[str]]], found: list[Span]
 
 
 def column_hints(cat: Catalog, text: str) -> str:
-    """Column synonyms (OKF 'Also called') the request uses: "'depth' = Wells well water
-    depth". Longer names win, so 'water depth' is not also read as 'depth'."""
+    """Column synonyms (OKF 'Also called') and comparatives (OKF 'Comparatives') the request
+    uses: "'depth' = Wells well water depth; 'deeper' = Wells well water depth >". Longer
+    names win, so 'water depth' is not also read as 'depth'."""
     cols: dict[str, list[str]] = {}
     for n, ly in cat.layers.items():
         for c in ly.columns.values():
             for w in c.synonyms:
                 cols.setdefault(w.lower(), []).append(f"{n} {c.alias}")
+            for w, op in c.comparatives.items():
+                cols.setdefault(w.lower(), []).append(f"{n} {c.alias} {'>' if op == 'gt' else '<'}")
     low, out = normalize(text).lower(), []
     for w in sorted(cols, key=len, reverse=True):
         pattern = rf"(?<!\w){re.escape(w)}(?!\w)"
