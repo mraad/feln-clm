@@ -89,16 +89,44 @@ def spans(text: str) -> list[Span]:
 
 
 def sample_spans(text: str, col: Column) -> list[Span]:
-    """Unquoted mentions of the column's catalog sample values (case-insensitive)."""
+    """Catalog samples mentioned in text; spaces may be written as adjectival hyphens."""
     low = normalize(text).lower()
     found = []
     for v in col.samples:
         if len(v) < 2:
             continue
-        m = re.search(rf"(?<!\w){re.escape(v.lower())}(?!\w)", low)
+        pattern = r"[\s\-‐‑]+".join(re.escape(word) for word in v.lower().split())
+        m = re.search(rf"(?<!\w){pattern}(?!\w)", low)
         if m:
             found.append(Span("str", v, m.start()))
     return found
+
+
+def ground_samples(cat: Catalog, text: str) -> str:
+    """Quote multiword text samples using catalog spelling, leaving literals untouched.
+
+    This gives adjectival values such as 'in-service' the same prompt and candidates
+    as an explicitly quoted value. Single words can also be subtypes, so leave them alone.
+    """
+    samples = sorted(
+        {
+            v
+            for ly in cat.layers.values()
+            for c in ly.columns.values()
+            if c.kind in ("upper", "text")
+            for v in c.samples
+            if len(v.split()) > 1 and not any(q in v for q in "'\"")
+        },
+        key=lambda v: (-len(v), v),
+    )
+    if not samples:
+        return text
+    patterns = [r"[\s\-‐‑]+".join(re.escape(w) for w in v.split()) for v in samples]
+    pattern = rf"(?<!\w)(?:{'|'.join(f'({p})' for p in patterns)})(?!\w)"
+    bare = _QUOTE_RE.sub(lambda m: "\0" * len(m.group(0)), text)
+    for m in reversed(list(re.finditer(pattern, bare, re.I))):
+        text = text[: m.start()] + f"'{samples[m.lastindex - 1]}'" + text[m.end() :]
+    return text
 
 
 # --------------------------------------------------------------------------- options

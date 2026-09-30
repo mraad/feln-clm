@@ -126,6 +126,21 @@ and with "<name> greater than / more than / over x" said with each `greater` com
 ("deeper than x"), and likewise for `less` (<), `at least` (>=: "at least", "no less
 than") and `at most` (<=: "at most", "no more than"); the gold is unchanged. Editing the OKF changes its hash: re-run `prepare` and retrain.
 
+Unquoted multiword text samples are normalized to quoted catalog values before building
+the prompt, in both preparation and inference. For example, `in-service` becomes
+`'IN SERVICE'`, so the existing value hints identify the pipeline's `current_phase`.
+Existing quoted literals and single-word values are preserved. With `models/q4b`,
+"Show all wells with depth > 350 m and within 5 km of an in-service pipeline" produces:
+
+```json
+{"layers": ["Wells", "Pipelines"],
+ "where": ["water_depth > cast(350 as DOUBLE PRECISION)", "current_phase = 'IN SERVICE'"],
+ "relations": ["withinDistance 5 kilometers"]}
+```
+
+Run the optional GPU regression with
+`FELN_CLM_TEST_MODEL=models/q4b uv run pytest -q -k local_model`.
+
 With `water_depth` "Also called: water depth, depth" and "Comparatives: deeper than =
 greater, shallower than = less", these decode correctly at confidence 1.00 (before: "wellbore name is
 not blank", 0.18–0.59):

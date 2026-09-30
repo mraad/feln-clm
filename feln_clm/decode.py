@@ -109,7 +109,8 @@ class Translator:
     # ------------------------------------------------------------------ search
     def ask(self, text: str) -> dict:
         t0 = time.perf_counter()
-        self.text = text = g.normalize(text)
+        original = g.normalize(text)
+        self.text = text = g.ground_samples(self.cat, original)
         self.found = g.spans(text)
         self.dists = list(dict.fromkeys(s.label for s in self.found if s.kind == "dist"))
         self._tries, self._cond_cache = {}, {}
@@ -155,7 +156,7 @@ class Translator:
                 alts.append({"meta": m, "confidence": round(math.exp(s), 4)})
         confidence = math.exp(score)
         return {
-            "text": text,
+            "text": original,
             "meta": meta,
             "status": "accepted" if confidence >= self.threshold else "abstain",
             "confidence": round(confidence, 4),

@@ -127,3 +127,88 @@ def test_at_least_and_at_most_comparatives_rewrite_their_own_rows():
         got = variants(cat, text, d)
         assert want <= set(got), got
         assert not any("deeper than" in v and "no deeper" not in v for v in got), got  # not > / <
+
+
+def test_catalog_sample_grounding_preserves_literals_and_subtypes():
+    phase = okf.Column(
+        "current_phase",
+        "current phase",
+        "String",
+        samples=["IN SERVICE", "ABANDONED IN PLACE"],
+        kind="upper",
+    )
+    purpose = okf.Column("purpose", "purpose", "String", samples=["INJECTION"], kind="upper")
+    cat = okf.Catalog(
+        {
+            "Pipelines": okf.Layer(
+                "Pipelines",
+                "",
+                "",
+                {
+                    "current_phase": phase,
+                    "purpose": purpose,
+                },
+            )
+        },
+        "test",
+    )
+    for phrase in ["in-service", "in‐service", "in‑service", "in service", "IN  SERVICE"]:
+        text = f"Find injection pipelines {phrase}."
+        assert g.ground_samples(cat, text) == "Find injection pipelines 'IN SERVICE'."
+        assert g.sample_spans(text, phase)[0].text == "IN SERVICE"
+    text = "Find 'in-service' pipelines named \"abandoned in place\"."
+    assert g.ground_samples(cat, text) == text
+    assert g.ground_samples(cat, "in 'some other' service") == "in 'some other' service"
+    assert g.ground_samples(cat, "not in-serviceable") == "not in-serviceable"
+    assert g.ground_samples(cat, "not in-service") == "not 'IN SERVICE'"
+    assert g.ground_samples(cat, "abandoned-in-place") == "'ABANDONED IN PLACE'"
+
+
+@needs_data
+def test_water_depth_near_in_service_pipeline():
+    """The complete request must be reachable, with phase rather than pipeline subtype."""
+    from feln_clm.decode import Translator
+
+    text = "Show all wells with depth > 350 m and within 5 km of an in-service pipeline"
+    expected = {
+        "layers": ["Wells", "Pipelines"],
+        "where": ["water_depth > cast(350 as DOUBLE PRECISION)", "current_phase = 'IN SERVICE'"],
+        "relations": ["withinDistance 5 kilometers"],
+    }
+    cat = okf.load(DATA / "okf")
+    grounded = g.ground_samples(cat, text)
+    assert "'IN SERVICE'" in grounded
+    assert g.column_hints(cat, grounded) == "'depth' = Wells well water depth"
+    d = g.decompose(cat, grounded, expected)
+    tr = object.__new__(Translator)
+    tr.cat, tr.values, tr.beam, tr.threshold, tr._ids = cat, {}, 4, 0.5, {}
+    tr.lm = Oracle(list("".join(g.pieces(cat, d)).encode()))
+    result = tr.ask(text)
+    assert result["text"] == text
+    assert g.same(result["meta"], expected)
+
+
+@needs_data
+def test_local_model_water_depth_near_in_service_pipeline():
+    """Opt-in real-model regression: FELN_CLM_TEST_MODEL=models/q4b pytest -k local_model."""
+    import os
+
+    from feln_clm.decode import Translator
+
+    model = os.environ.get("FELN_CLM_TEST_MODEL")
+    if not model:
+        pytest.skip("set FELN_CLM_TEST_MODEL to run the local GPU model")
+    tr = Translator(str(DATA / "okf"), model)
+    for phase in ("in-service", "in service", "in‑service"):
+        result = tr.ask(f"Show all wells with depth > 350 m and within 5 km of an {phase} pipeline")
+        assert g.same(
+            result["meta"],
+            {
+                "layers": ["Wells", "Pipelines"],
+                "where": [
+                    "water_depth > cast(350 as DOUBLE PRECISION)",
+                    "current_phase = 'IN SERVICE'",
+                ],
+                "relations": ["withinDistance 5 kilometers"],
+            },
+        )

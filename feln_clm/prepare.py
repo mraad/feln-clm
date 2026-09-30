@@ -104,11 +104,12 @@ def main() -> None:
                 continue
             extra = [] if split == "dev" else variants(cat, text, d)
             for k, (s, t) in enumerate([(split, text)] + [(split + "+", v) for v in extra]):
+                grounded = g.ground_samples(cat, t)
                 tags = g.tags(cat, t, d)
                 counts[s] += 1
                 counts.update(f"{s[:4]}/{tag}" for tag in tags)
                 row = {"id": f"{i}.{k}" if k else i, "split": s, "text": t, "meta": x["meta"],
-                       "tags": tags, "prompt": g.prompt(t, g.hints(cat, sets, g.spans(t)), g.column_hints(cat, t)),
+                       "tags": tags, "prompt": g.prompt(grounded, g.hints(cat, sets, g.spans(grounded)), g.column_hints(cat, grounded)),
                        "pieces": g.pieces(cat, d)}  # fmt: skip
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
     json.dump(index, open(os.path.join(a.out, "values.json"), "w"), ensure_ascii=False)
