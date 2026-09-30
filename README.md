@@ -111,15 +111,16 @@ word of its own, say so in the column's Query hints:
 
 - Depth of the well in meters
 - Also called: water depth, depth
-- Comparatives: deeper = greater, shallower = less
+- Comparatives: deeper than = greater, shallower than = less, at least as deep as = at least, no shallower than = at least, at most as deep as = at most, no deeper than = at most
 ```
 
-The prompt then names the column (and, for a comparative, the operator: `'deeper' =
-Wells well water depth >`) when a request uses one of these words. `prepare` adds
+The prompt then names the column (and, for a comparative, the operator: `'deeper than'
+= Wells well water depth >`) when a request uses one of these phrases; longer phrases win,
+so "no deeper than" is not also read as "deeper than". `prepare` adds
 training copies of the requests on that column with the name swapped for each other one,
-and with "<name> greater than / more than / over x" said as "deeper than x" (and the `less`
-forms as "shallower than x"); the gold is unchanged. Comparatives map to `greater` (>) or
-`less` (<). Editing the OKF changes its hash: re-run `prepare` and retrain.
+and with "<name> greater than / more than / over x" said with each `greater` comparative
+("deeper than x"), and likewise for `less` (<), `at least` (>=: "at least", "no less
+than") and `at most` (<=: "at most", "no more than"); the gold is unchanged. Editing the OKF changes its hash: re-run `prepare` and retrain.
 
 With `water_depth` "Also called: water depth, depth" and "Comparatives: deeper = greater,
 shallower = less", these decode correctly at confidence 1.00 (before: "wellbore name is
@@ -132,8 +133,9 @@ not blank", 0.18–0.59):
 | Show oil wells with a depth over 100. | `Wells [oil] where well water depth > 100` |
 | Wells with depth between 60 and 80. | `Wells [any] where well water depth between 60 and 80` |
 
-All 9 held-out fold-0 rewrites (synonym and comparative) decode to their gold. Only `>`
-and `<` have comparatives; "at least as deep as" (`>=`) is not taught.
+All 9 held-out fold-0 rewrites (synonym and comparative) decode to their gold.
+
+GEPLACEHOLDER
 
 ## Setup (Mac)
 
