@@ -92,3 +92,9 @@ def test_comparatives_hint_the_column_and_rewrite_training_text():
         "relations": []})  # fmt: skip
     assert "Show me gas wells deeper than 111.0, within 5 km of oil." in variants(cat, text, d)
     assert not any("shallower" in v for v in variants(cat, text, d))
+    quoted = "Show gas wells named 'depth over 5' with a well water depth greater than 111.0."
+    d = g.decompose(cat, quoted, {"layers": ["Wells"], "where": [
+        "content_type = cast(2 as SMALLINT) and (water_depth > cast(111.0 as DOUBLE PRECISION))"],
+        "relations": []})  # fmt: skip
+    assert all("'depth over 5'" in v for v in variants(cat, quoted, d))  # literals untouched
+    assert "Show gas wells named 'depth over 5' deeper than 111.0." in variants(cat, quoted, d)
