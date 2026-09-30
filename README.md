@@ -39,18 +39,18 @@ always reachable (the oracle test decodes all 3,000 FELN.json queries back to go
 
 | | **feln-clm v2** (Qwen3-4B + LoRA; Mac MLX run) | v1 (CLM, 5 heads) | feln-laya | feln-lora v2 |
 |---|---:|---:|---:|---:|
-| Exact FELN (`FELN.same`) | **91.0%** | 81.5% | 74.0% | 60.0%¹ |
-| — a gold layer never named in the text (110) | **85.5%** | 73.6% | — | — |
-| Atom precision / recall (layers, predicates, relations) | **0.958 / 0.957** | 0.939 / 0.924 | — | — |
-| Accuracy / coverage at confidence ≥ 0.8 | **96.0% / 86.5%** | 92.1% / 63.0% | 91.6% / 53.5% | — |
-| Accuracy / coverage at confidence ≥ 0.9 | **98.1% / 80.5%** | 94.8% / 48.0% | — | — |
-| Executed on NorthSea.gdb: same feature set | **94.5%** | 94.0% | 92.0% | 84.0% |
-| — same set, requests with non-empty gold (77) | **88.3%** | 85.7% | 81.8% | 66.2% |
-| — mean Jaccard | **0.956** | 0.955 | 0.942 | 0.859 |
-| — macro precision / recall of feature IDs | **0.939 / 0.937** | 0.898 / 0.922 | 0.924 / 0.908 | 0.831 / 0.734 |
-| — micro precision / recall of feature IDs | 0.531 / 0.696 | 0.462 / 0.738 | **0.687 / 0.806** | 0.646 / 0.715 |
+| Exact FELN (`FELN.same`) | **92.0%** | 81.5% | 74.0% | 60.0%¹ |
+| — a gold layer never named in the text (110) | **88.2%** | 73.6% | — | — |
+| Atom precision / recall (layers, predicates, relations) | **0.968 / 0.966** | 0.939 / 0.924 | — | — |
+| Accuracy / coverage at confidence ≥ 0.8 | **94.4% / 88.5%** | 92.1% / 63.0% | 91.6% / 53.5% | — |
+| Accuracy / coverage at confidence ≥ 0.9 | **97.0% / 82.0%** | 94.8% / 48.0% | — | — |
+| Executed on NorthSea.gdb: same feature set | **96.5%** | 94.0% | 92.0% | 84.0% |
+| — same set, requests with non-empty gold (77) | **92.2%** | 85.7% | 81.8% | 66.2% |
+| — mean Jaccard | **0.971** | 0.955 | 0.942 | 0.859 |
+| — macro precision / recall of feature IDs | **0.964 / 0.950** | 0.898 / 0.922 | 0.924 / 0.908 | 0.831 / 0.734 |
+| — micro precision / recall of feature IDs | 0.656 / 0.702 | 0.462 / 0.738 | **0.687 / 0.806** | 0.646 / 0.715 |
 | Invalid outputs | 0 | 0 | — | 20 |
-| Median latency | 0.59 s (gc5) · 1.48 s (Mac MLX; p90 2.3 s) | 4.0 s (Mac) | 0.16 s | 2.4 s |
+| Median latency | 0.59 s (gc5) · 0.59 s (Mac MLX; p90 0.9 s)² | 4.0 s (Mac) | 0.16 s | 2.4 s |
 
 ¹ after ILIKE→LIKE and INT→INTEGER normalisation (49.5% raw). feln-lora (Nemotron-4B LoRA,
 free-form JSON under a shape-only grammar) was trained on templated questions and its own
@@ -60,8 +60,12 @@ Mac MLX and gc5 torch predictions agree on 200/200 dev requests. Single training
 noisy by about a point: the same recipe with another seed moves fold-0 exact by ~1 point
 (synonyms 90.5% / 89.5%, comparatives 89.3% / 90.2%), and each retraining flips 18–27 of
 the 560 fold-0 requests, nearly all implicit-layer coin flips. The dev score stayed within
-that band as the OKF gained synonyms and comparatives (91.5% → 91.5% → 91.0%). Compare
-recipes over at least two seeds. Micro feature precision/recall is dominated by a few requests with very large
+that band as the OKF gained synonyms and comparatives (91.5% → 91.5% → 91.0% → 92.0%).
+Compare recipes over at least two seeds.
+
+² Earlier Mac runs of the same decoder measured 1.5–1.6 s median; this run and a 30-request
+re-time measured 0.55–0.59 s. The decoder did not change, so the difference is load on the
+Mac during the earlier runs, not a speed-up. Micro feature precision/recall is dominated by a few requests with very large
 result sets (a wrong subtype on a wells query returns ~1,900 wells); per request (macro)
 v2 leads on both. Execution metrics run gold and predicted FELN with DuckDB spatial on the
 GDB (EPSG:3035 metres); 123 of 200 gold queries return no features.
@@ -122,8 +126,8 @@ and with "<name> greater than / more than / over x" said with each `greater` com
 ("deeper than x"), and likewise for `less` (<), `at least` (>=: "at least", "no less
 than") and `at most` (<=: "at most", "no more than"); the gold is unchanged. Editing the OKF changes its hash: re-run `prepare` and retrain.
 
-With `water_depth` "Also called: water depth, depth" and "Comparatives: deeper = greater,
-shallower = less", these decode correctly at confidence 1.00 (before: "wellbore name is
+With `water_depth` "Also called: water depth, depth" and "Comparatives: deeper than =
+greater, shallower than = less", these decode correctly at confidence 1.00 (before: "wellbore name is
 not blank", 0.18–0.59):
 
 | Request | Pieces |
@@ -135,7 +139,16 @@ not blank", 0.18–0.59):
 
 All 9 held-out fold-0 rewrites (synonym and comparative) decode to their gold.
 
-GEPLACEHOLDER
+With the `>=` / `<=` phrases these decode correctly too, at confidence 1.00:
+
+| Request | Pieces |
+|---|---|
+| Find wells at least as deep as 100. | `Wells [any] where well water depth >= 100` |
+| Show gas wells no deeper than 70.5 within 5 km of oil pipelines. | `Wells [gas] where well water depth <= 70.5; within 5 kilometers of Pipelines [oil]` |
+| List oil shows no shallower than 90 meters. | `Wells [oil shows] where well water depth >= 90` |
+| Water wells at most as deep as 110. | `Wells [water] where well water depth <= 110` |
+
+Fold-0 exact over two seeds: 90.4% / 89.3% (before: 89.3% / 90.2%).
 
 ## Setup (Mac)
 
