@@ -25,6 +25,7 @@ from . import grammar as g
 from . import okf
 
 FOLDS = 5
+PHRASES = {"gt": r"greater than|more than|over|above|>", "lt": r"less than|under|below|<"}
 
 
 def value_sets(index: dict) -> dict[str, dict[str, set[str]]]:
@@ -32,18 +33,25 @@ def value_sets(index: dict) -> dict[str, dict[str, set[str]]]:
 
 
 def variants(cat: okf.Catalog, text: str, d: g.Decisions) -> list[str]:
-    """``text`` with the name of each used condition column swapped for its other names."""
+    """``text`` with the name of each used condition column swapped for its other names, and
+    "<name> greater than 5" said with the column's comparative ("deeper than 5")."""
     out = []
     for name in d.layers:
-        col = g.options(cat[name])[d.condition[name]].col
-        if not col:
+        opt = g.options(cat[name])[d.condition[name]]
+        if not opt.col:
             continue
-        c = cat[name].columns[col]
+        c = cat[name].columns[opt.col]
         names = sorted({c.alias, *c.synonyms}, key=len, reverse=True)
         for w in names:
             if m := re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, re.I):
                 out += [text[: m.start()] + v + text[m.end() :] for v in names if v != w]
                 break
+        said = "|".join(re.escape(w) for w in names)
+        for word, op in c.comparatives.items():
+            m = re.search(rf"(?:\b(?:with|where|having)\s+(?:an?\s+|the\s+)?)?(?<!\w)(?:{said})\s+"
+                          rf"(?:is\s+)?(?:{PHRASES[op]})\s+", text, re.I)  # fmt: skip
+            if op == opt.op and m:
+                out.append(f"{text[: m.start()]}{word} than {text[m.end() :]}")
     return out
 
 

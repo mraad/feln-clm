@@ -99,21 +99,25 @@ itself instead of heads over frozen embeddings.
 - The adapter is tied to the OKF hash and to `values.json`; a changed catalog or data needs
   `prepare` + retraining (~8 min on one RTX PRO 6000).
 
-## Column synonyms
+## Column synonyms and comparatives
 
-When requests call a column something other than its OKF alias, list the other names in
-the column's Query hints, comma-separated:
+When requests call a column something other than its OKF alias, or compare it with a
+word of its own, say so in the column's Query hints:
 
 ```
 ## `water_depth`
 
 - Depth of the well in meters
 - Also called: water depth, depth
+- Comparatives: deeper = greater, shallower = less
 ```
 
-The prompt then names the column when a request uses one of them, and `prepare` adds
-training copies of the requests on that column with the name swapped for each other one
-(same gold). Editing the OKF changes its hash: re-run `prepare` and retrain.
+The prompt then names the column (and, for a comparative, the operator: `'deeper' =
+Wells well water depth >`) when a request uses one of these words. `prepare` adds
+training copies of the requests on that column with the name swapped for each other one,
+and with "<name> greater than / more than / over x" said as "deeper than x" (and the `less`
+forms as "shallower than x"); the gold is unchanged. Comparatives map to `greater` (>) or
+`less` (<). Editing the OKF changes its hash: re-run `prepare` and retrain.
 
 With `water_depth` "Also called: water depth, depth", "oil wells with a depth over 100",
 "gas wells where depth is less than 70.5" and "wells with depth between 60 and 80" decode

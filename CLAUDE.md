@@ -31,7 +31,9 @@ uv run ruff check . && uv run ruff format --check .
 - The prompt hints come from `values.json` (lower-cased distinct values of every text
   column, built from the GDB by `prepare`). It travels with the model dir; rebuild both
   if the data changes.
-- Column synonyms come from OKF hints `Also called: a, b` (`Column.synonyms`). `prepare`
+- Column synonyms come from OKF hints `Also called: a, b` (`Column.synonyms`), comparatives
+  from `Comparatives: deeper = greater, …` (`Column.comparatives`, rewritten in training
+  text by `prepare.PHRASES`). `prepare`
   writes swapped-name copies as split `<split>+`; `train` drops `<holdout>+` with its fold.
 - A model refuses an OKF whose `Catalog.sha` differs; do not bypass by editing the config.
 
