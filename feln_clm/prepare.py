@@ -6,7 +6,9 @@
 ``OUT/rows.jsonl``: one row per request with ``split`` (``dev`` = the held-out texts,
 ``fold0``..``fold4`` = the other FELN examples, ``extra`` = training only), ``prompt``,
 ``pieces`` (the target, one string per choice), ``tags`` and the gold ``meta``.
-``OUT/values.json`` is the literal index the prompt hints come from. Requests the grammar
+A training request whose condition column has other names (OKF 'Also called') is also
+written with that name swapped for each other one, split ``<split>+`` so it follows its
+source fold. ``OUT/values.json`` is the literal index the prompt hints come from. Requests the grammar
 cannot reproduce are skipped and counted, never rewritten.
 """
 
@@ -17,6 +19,7 @@ import collections
 import json
 import os
 import random
+import re
 
 from . import grammar as g
 from . import okf
@@ -26,6 +29,22 @@ FOLDS = 5
 
 def value_sets(index: dict) -> dict[str, dict[str, set[str]]]:
     return {n: {c: set(v) for c, v in cols.items()} for n, cols in index.items()}
+
+
+def variants(cat: okf.Catalog, text: str, d: g.Decisions) -> list[str]:
+    """``text`` with the name of each used condition column swapped for its other names."""
+    out = []
+    for name in d.layers:
+        col = g.options(cat[name])[d.condition[name]].col
+        if not col:
+            continue
+        c = cat[name].columns[col]
+        names = sorted({c.alias, *c.synonyms}, key=len, reverse=True)
+        for w in names:
+            if m := re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, re.I):
+                out += [text[: m.start()] + v + text[m.end() :] for v in names if v != w]
+                break
+    return out
 
 
 def main() -> None:
@@ -68,13 +87,15 @@ def main() -> None:
             except ValueError as e:
                 skipped[f"{split[:4]}/{str(e).split(':')[0]}"] += 1
                 continue
-            tags = g.tags(cat, text, d)
-            counts[split] += 1
-            counts.update(f"{split[:4]}/{t}" for t in tags)
-            row = {"id": i, "split": split, "text": x["text"], "meta": x["meta"], "tags": tags,
-                   "prompt": g.prompt(text, g.hints(cat, sets, g.spans(text))),
-                   "pieces": g.pieces(cat, d)}  # fmt: skip
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            extra = [] if split == "dev" else variants(cat, text, d)
+            for k, (s, t) in enumerate([(split, text)] + [(split + "+", v) for v in extra]):
+                tags = g.tags(cat, t, d)
+                counts[s] += 1
+                counts.update(f"{s[:4]}/{tag}" for tag in tags)
+                row = {"id": f"{i}.{k}" if k else i, "split": s, "text": t, "meta": x["meta"],
+                       "tags": tags, "prompt": g.prompt(t, g.hints(cat, sets, g.spans(t)), g.column_hints(cat, t)),
+                       "pieces": g.pieces(cat, d)}  # fmt: skip
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
     json.dump(index, open(os.path.join(a.out, "values.json"), "w"), ensure_ascii=False)
     report = {"catalog_sha": cat.sha, "okf": os.path.abspath(a.okf), "seed": a.seed,
               "rows": dict(counts), "skipped": dict(skipped)}  # fmt: skip

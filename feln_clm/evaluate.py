@@ -71,27 +71,32 @@ def run(translator, examples: list[dict], output: str) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     with path.open("w") as f:
-        for i, x in enumerate(examples):
-            res = translator.ask(x["text"])
-            pred, gold = res["meta"], x["meta"]
-            a, b = atoms(pred), atoms(gold)
-            row = {
-                "index": i, "text": x["text"], "tags": x.get("tags", []), "gold": gold, "pred": pred,
-                "same": FELN(**pred).same(FELN(**gold)),
-                "partial": FELNCompare.partial(FELN(**gold), FELN(**pred)),
-                "atoms_tp": len(a & b), "atoms_pred": len(a), "atoms_gold": len(b),
-                "confidence": res["confidence"], "status": res["status"],
-                "seconds": res["seconds"], "decisions": res["decisions"],
-                "alternatives": [a["meta"] for a in res["alternatives"]],
-            }  # fmt: skip
-            rows.append(row)
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            f.flush()
-            if (i + 1) % 20 == 0:
-                print(
-                    f"[eval] {i + 1}/{len(examples)} exact {summarize(rows)['exact']:.3f}",
-                    flush=True,
-                )
-    summary = summarize(rows)
-    path.with_suffix(".summary.json").write_text(json.dumps(summary, indent=1))
+        try:
+            for i, x in enumerate(examples):
+                res = translator.ask(x["text"])
+                pred, gold = res["meta"], x["meta"]
+                a, b = atoms(pred), atoms(gold)
+                row = {
+                    "index": i, "text": x["text"], "tags": x.get("tags", []), "gold": gold, "pred": pred,
+                    "same": FELN(**pred).same(FELN(**gold)),
+                    "partial": FELNCompare.partial(FELN(**gold), FELN(**pred)),
+                    "atoms_tp": len(a & b), "atoms_pred": len(a), "atoms_gold": len(b),
+                    "confidence": res["confidence"], "status": res["status"],
+                    "seconds": res["seconds"], "decisions": res["decisions"],
+                    "alternatives": [a["meta"] for a in res["alternatives"]],
+                }  # fmt: skip
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                f.flush()
+                rows.append(row)  # after the write: a summary never counts an unwritten row
+                if (i + 1) % 20 == 0:
+                    print(
+                        f"[eval] {i + 1}/{len(examples)} exact {summarize(rows)['exact']:.3f}",
+                        flush=True,
+                    )
+        finally:  # an interrupted run still summarises the requests it finished
+            if rows:
+                summary = summarize(rows)
+                if len(rows) < len(examples):
+                    summary["interrupted"] = f"{len(rows)}/{len(examples)}"
+                path.with_suffix(".summary.json").write_text(json.dumps(summary, indent=1))
     return summary
