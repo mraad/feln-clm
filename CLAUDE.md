@@ -44,6 +44,9 @@ uv run ruff check . && uv run ruff format --check .
   on `fold0`..`fold4` (cross-validation over the other FELN.json requests), not on dev.
 - `tags`: `implicit` (a gold layer never named) and `noisy` (gold contradicts the text).
   Report exact per tag; `noisy` rows are excluded from training by default.
+- One training is noisy by ~1 point (another seed moves fold-0 exact by ~1; a retrain flips
+  18–27 fold-0 coin flips): compare recipes over ≥ 2 seeds (`train --seed`) before calling
+  a change a gain or a loss.
 - `evaluate` never overwrites; use a new output path per run. An interrupted run leaves a
   summary with `"interrupted": "n/N"`: not a result to report.
 - Execution metrics reproject the GDB (EPSG:4326 assumed) to EPSG:3035 metres; 123 of 200
