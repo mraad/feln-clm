@@ -107,7 +107,26 @@ class Translator:
         return g.compose(self.cat, d)
 
     # ------------------------------------------------------------------ search
-    def ask(self, text: str) -> dict:
+    def _unique_finished(self, finished: list, limit: int) -> list:
+        """Keep the highest-scoring representative of each distinct FELN."""
+        out, metas = [], []
+        for score, acts in sorted(finished, key=lambda f: -f[0]):
+            meta = self._meta(acts)
+            if not any(g.same(meta, m) for m in metas):
+                out.append((score, acts))
+                metas.append(meta)
+                if len(out) == limit:
+                    break
+        return out
+
+    def ask(self, text: str, *, nbest: int = 1) -> dict:
+        """Translate, optionally collecting nbest distinct completions for offline reranking.
+
+        Candidate recall remains limited by beam pruning; this is not exhaustive search.
+        The default retains the production stopping rule and response format.
+        """
+        if not 1 <= nbest <= self.beam:
+            raise ValueError("nbest must be between 1 and beam")
         t0 = time.perf_counter()
         original = g.normalize(text)
         self.text = text = g.ground_samples(self.cat, original)
@@ -141,7 +160,11 @@ class Translator:
                 nxt.append((acts, child, score, part))
                 parents.append(row)
                 tokens.append(t)
-            best = max((f[0] for f in finished), default=-math.inf)
+            if nbest > 1:
+                finished = self._unique_finished(finished, nbest)
+                best = finished[-1][0] if len(finished) == nbest else -math.inf
+            else:
+                best = max((f[0] for f in finished), default=-math.inf)
             if not nxt or best >= nxt[0][2]:
                 break
             logits = self.lm.step(parents, tokens)
@@ -155,7 +178,7 @@ class Translator:
                 seen.append(m)
                 alts.append({"meta": m, "confidence": round(math.exp(s), 4)})
         confidence = math.exp(score)
-        return {
+        result = {
             "text": original,
             "meta": meta,
             "status": "accepted" if confidence >= self.threshold else "abstain",
@@ -168,3 +191,10 @@ class Translator:
             "alternatives": alts,
             "seconds": round(time.perf_counter() - t0, 3),
         }
+        if nbest > 1:
+            result["candidates"] = [
+                {"meta": self._meta(a), "log_score": s,
+                 "pieces": [p.strip(" ;") for p, act, _ in a if act[0] != "end"]}
+                for s, a in finished
+            ]  # fmt: skip
+        return result

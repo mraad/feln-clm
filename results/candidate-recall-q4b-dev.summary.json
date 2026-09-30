@@ -1,0 +1,114 @@
+{
+  "model": {
+    "base": "Qwen/Qwen3-4B",
+    "catalog_sha": "7046e346b5ad1509",
+    "scale": 2.0,
+    "rank": 16,
+    "holdout": "",
+    "keep_noisy": false,
+    "epochs": 3,
+    "lr": 0.0002,
+    "batch": 16,
+    "seed": 0,
+    "rows": 5003,
+    "steps": 939,
+    "final_loss": 0.0018574983735379646,
+    "seconds": 525
+  },
+  "catalog_sha": "7046e346b5ad1509",
+  "split": "dev",
+  "beam": 8,
+  "k": 8,
+  "usage": "evaluation_only",
+  "search": "distinct completions, kth-score stopping, beam-pruned",
+  "n": 200,
+  "baseline_correct": 184,
+  "recall": {
+    "1": 0.92,
+    "2": 0.985,
+    "3": 0.995,
+    "4": 0.995,
+    "5": 0.995,
+    "6": 0.995,
+    "7": 0.995,
+    "8": 1.0
+  },
+  "recoverable_baseline_errors": 16,
+  "clean": {
+    "n": 195,
+    "baseline_correct": 182,
+    "recall": {
+      "1": 0.9333333333333333,
+      "2": 0.9897435897435898,
+      "3": 1.0,
+      "4": 1.0,
+      "5": 1.0,
+      "6": 1.0,
+      "7": 1.0,
+      "8": 1.0
+    },
+    "recoverable_baseline_errors": 13
+  },
+  "explicit_clean": {
+    "n": 89,
+    "baseline_correct": 86,
+    "recall": {
+      "1": 0.9662921348314607,
+      "2": 0.9775280898876404,
+      "3": 1.0,
+      "4": 1.0,
+      "5": 1.0,
+      "6": 1.0,
+      "7": 1.0,
+      "8": 1.0
+    },
+    "recoverable_baseline_errors": 3
+  },
+  "implicit_clean": {
+    "n": 106,
+    "baseline_correct": 96,
+    "recall": {
+      "1": 0.9056603773584906,
+      "2": 1.0,
+      "3": 1.0,
+      "4": 1.0,
+      "5": 1.0,
+      "6": 1.0,
+      "7": 1.0,
+      "8": 1.0
+    },
+    "recoverable_baseline_errors": 10
+  },
+  "noisy": {
+    "n": 5,
+    "baseline_correct": 2,
+    "recall": {
+      "1": 0.4,
+      "2": 0.8,
+      "3": 0.8,
+      "4": 0.8,
+      "5": 0.8,
+      "6": 0.8,
+      "7": 0.8,
+      "8": 1.0
+    },
+    "recoverable_baseline_errors": 3
+  },
+  "top1_changed": 0,
+  "median_baseline_seconds": 0.6665000000000001,
+  "median_candidate_seconds": 0.9584999999999999,
+  "min_candidates": 8,
+  "max_candidates": 8,
+  "manual_audit": {
+    "scope": "16 baseline misses only; analyst judgment, not a relabeling of dev",
+    "counts": {
+      "ambiguous_request": 8,
+      "conflicting_gold": 6,
+      "actionable_semantic_error": 2
+    },
+    "actionable_gold_ranks": [
+      2,
+      2
+    ]
+  }
+}

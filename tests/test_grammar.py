@@ -212,3 +212,70 @@ def test_local_model_water_depth_near_in_service_pipeline():
                 "relations": ["withinDistance 5 kilometers"],
             },
         )
+
+
+def test_nbest_keeps_searching_after_top1_finishes():
+    from feln_clm.decode import Translator
+
+    class TinyTranslator(Translator):
+        def _trie(self, acts):
+            root = {}
+            choices = (
+                [(".", ("end",))]
+                if acts
+                else [
+                    ("A", ("head", "A")),
+                    ("BBBB", ("head", "B")),
+                ]
+            )
+            for piece, action in choices:
+                node = root
+                for token in self.ids(piece):
+                    node = node.setdefault(token, {})
+                node[-1] = (piece, action)
+            return root
+
+        def _meta(self, acts):
+            name = acts[0][1][1]
+            return {"layers": [name], "where": [""], "relations": []}
+
+    tr = object.__new__(TinyTranslator)
+    tr.cat, tr.values, tr.beam, tr.threshold, tr._ids = okf.Catalog({}, ""), {}, 2, 0.5, {}
+    tr.lm = Oracle(list(b"A."))
+    ordinary = tr.ask("request")
+    assert "candidates" not in ordinary
+    assert ordinary["alternatives"] == []
+    result = tr.ask("request", nbest=2)
+    assert result["meta"] == ordinary["meta"]
+    assert [c["meta"]["layers"] for c in result["candidates"]] == [["A"], ["B"]]
+    assert result["candidates"][0]["log_score"] > result["candidates"][1]["log_score"]
+    with pytest.raises(ValueError, match="nbest"):
+        tr.ask("request", nbest=3)
+    # Two token sequences for the same FELN must not satisfy the n-best stopping rule.
+    a = (("A", ("head", "A"), 0.0),)
+    b = (("BBBB", ("head", "B"), 0.0),)
+    assert tr._unique_finished([(-2.0, a), (-1.0, a), (-3.0, b)], 2) == [(-1.0, a), (-3.0, b)]
+
+
+def test_candidate_recall_counts_missing_gold_and_separates_noisy():
+    from feln_clm.candidates import summarize
+
+    meta = {"layers": ["Wells"], "where": [""], "relations": []}
+    rows = [
+        {
+            "baseline_same": rank == 1,
+            "gold_rank": rank,
+            "tags": tags,
+            "baseline": meta,
+            "candidates": [{"meta": meta}] * 3,
+            "baseline_seconds": 1.0,
+            "candidate_seconds": 2.0,
+        }
+        for rank, tags in [(1, []), (2, ["implicit"]), (0, []), (3, ["noisy"])]
+    ]
+    report = summarize(rows, 3)
+    assert report["recall"] == {"1": 0.25, "2": 0.5, "3": 0.75}
+    assert report["recoverable_baseline_errors"] == 2
+    assert report["clean"]["recoverable_baseline_errors"] == 1
+    assert report["explicit_clean"]["n"] == 2
+    assert report["top1_changed"] == 0

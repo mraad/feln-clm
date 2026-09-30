@@ -244,3 +244,102 @@ feln_clm/cli.py        ask · evaluate · execute · serve
 uv run pytest -q   # span edge cases; oracle: all 3,000 FELN.json queries decode back to gold
 uv run ruff check . && uv run ruff format --check .
 ```
+
+## Candidate recall before contrastive reranking
+
+Measure whether the correct FELN is available to a future reranker, without training one:
+
+```sh
+uv run python -m feln_clm.candidates data/okf models/q4b out/rows-cmp3 \
+    --split dev --beam 8 --k 8 --output out/candidates-q4b-dev-top8.jsonl
+```
+
+`Translator.ask(text, nbest=8)` collects up to eight semantically distinct completions.
+Search stops when the eighth completion beats every live beam, or search is exhausted.
+This remains beam-pruned search, not exhaustive top-k enumeration. Default `ask(text)`
+keeps the existing production behavior and response format.
+
+The diagnostic runs both default decoding and candidate collection on each request,
+records raw candidate log scores and readable query pieces, and reports exact FELN
+recall at ranks 1–8, recoverable baseline errors, latency, and separate noisy/implicit
+slices. Raw rows stay under ignored `out/`; they are marked `evaluation_only` and must
+not become reranker training data. Existing outputs are never overwritten; interrupted
+runs write partial summaries. Model and prepared-row catalog hashes must match.
+
+Use a model's held-out fold for recipe selection; the CLI rejects other non-dev splits.
+A fixed run on `dev` is descriptive only. Do not use it to choose beam width, reranker
+architecture, score weights, or training examples. For training, generate candidates on
+folds excluded from the generating model's training, and split paraphrases together.
+
+Fixed diagnostic on the 200 development requests (`q4b`, beam 8; no reranker trained):
+
+| Metric | Result |
+|---|---:|
+| Default top-1 exact FELN | 184/200 (92.0%) |
+| Gold available at rank ≤ 2 | 197/200 (98.5%) |
+| Gold available at rank ≤ 3 | 199/200 (99.5%) |
+| Gold available at rank ≤ 8 | 200/200 (100%) |
+| Top-1 changes from extended search | 0 |
+| Median default / top-8 decoding | 0.667 s / 0.958 s |
+
+These are candidate-availability ceilings against existing labels, not reranker accuracy.
+Manual inspection of the 16 baseline misses found 2 clear semantic errors (both corrected
+at rank 2), 8 ambiguous requests, and 6 conflicting gold labels. This audit is an analyst
+judgment, not a relabeling of the development set. Automatic `noisy` tags miss some label
+problems, including imperative “Show wells” mislabeled as the SHOWS subtype.
+The useful contrastive examples involve dropping a named literal and assigning an
+explicit subtype to the wrong layer. Test that hypothesis on clean held-out folds before
+training or choosing a reranker recipe; the current local 4B model has trained on all
+five folds. Aggregate evidence: `results/candidate-recall-q4b-dev.summary.json`.
+Raw candidates and the annotated mistake audit remain in ignored `out/`.
+
+## Contrastive reranker pilot (gpu-host)
+
+`feln_clm.rerank` is an offline experiment; it does not change production inference.
+Collect candidates from each generator's held-out fold and mark the output explicitly:
+
+```sh
+python -m feln_clm.candidates okf models/q4b-ge-f0 rows-cmp3 --backend torch \
+    --split fold0 --usage reranker_pool --output candidates/fold0-s0.jsonl
+python -m feln_clm.candidates okf models/q4b-ge-f0-s1 rows-cmp3 --backend torch \
+    --split fold0 --usage reranker_pool --output candidates/fold0-s1.jsonl
+python -m feln_clm.rerank okf candidates/fold0-s0.jsonl candidates/fold0-s1.jsonl \
+    --rows rows-cmp3 --out artifacts/pilot
+```
+
+The pilot rejects development/evaluation-only candidate files. It excludes implicit or
+noisy requests, checks imperative “Show” against the SHOWS subtype, and excludes gold
+query groups found in generator training or development data. These filters are
+conservative heuristics, not human certification that every remaining label is correct.
+Equivalent gold atom sets stay together in a deterministic 60/20/20 train/validation/test
+split. Atom sets may also group some non-equivalent Boolean queries; that is conservative
+for leakage prevention and is never used as the correctness metric.
+
+Frozen Qwen3-4B last-token embeddings feed a shared 128-dimensional linear projection.
+Training uses per-request contrastive cross entropy at temperature 0.1, AdamW at 0.001,
+and 30 epochs. There are no in-batch negatives. Validation selects the epoch and a blend
+of the generator log score with the contrastive score; weight zero retains the baseline.
+Two projection seeds (0 and 1) are evaluated on the same untouched test groups. Candidate
+sets from both generator seeds remain in the same partition, and results distinguish
+candidate-set counts from unique request counts. Missing-gold training sets are skipped;
+missing-gold validation/test sets count as incorrect. This is a pilot within fold 0,
+not five-fold cross-validation and not an evaluation on the 200 development requests.
+
+Remote long-running jobs must run in tmux. The current isolated experiment uses session
+`feln-contrastive-20260930` and directory
+`~/feln-clm/experiments/contrastive-20260930`, with separate windows for both
+candidate jobs and the dependent embedding/training job. Logs and exit-status files stay
+under `logs/`; checkpoints, partition manifests, and test predictions stay under
+`artifacts/`. Reattach with `ssh -t gpu-host 'tmux attach -t feln-contrastive-20260930'`.
+
+Completed pilot: 159 training, 44 validation, and 38 test requests after filtering,
+with two candidate sets per request. Both projection seeds selected epoch 2 on validation
+(85/88 correct versus baseline 84/88). On the untouched test groups, both scored 73/76
+(96.1%), exactly matching baseline: one correction and one regression each. The correction
+removed an unrequested Wells layer; the regression dropped a requested multilateral
+filter. All 76 candidate sets contained the labeled answer, so recall was not the test
+bottleneck. Both rankings returned the same gold feature sets on the current database
+(76/76, including 30 nonempty-gold cases); that does not erase their semantic differences.
+This small pilot does not justify enabling the reranker in production. Aggregate results
+are in `results/contrastive-fold0-pilot.summary.json`; local checkpoints and raw test
+predictions are under ignored `out/contrastive-gpu-host/pilot/`.
